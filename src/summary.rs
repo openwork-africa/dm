@@ -45,6 +45,12 @@ fn tool() -> ToolSpec {
     }
 }
 
+/// One note as the model sent it.
+#[derive(Deserialize)]
+struct Sent {
+    value: Option<String>,
+}
+
 pub async fn update(store: &Store, model: &Model, who: &Who, day: &str) -> Result<()> {
     let transcript = store.transcripts_of(who, day);
     if transcript.trim().is_empty() {
@@ -67,10 +73,6 @@ pub async fn update(store: &Store, model: &Model, who: &Who, day: &str) -> Resul
         .find(|c| c.name == TOOL)
         .ok_or_else(|| anyhow!("the summary model did not call its notes tool"))?;
 
-    #[derive(Deserialize)]
-    struct Sent {
-        value: Option<String>,
-    }
     let sent: BTreeMap<String, Sent> = serde_json::from_value(call.input())?;
     let notes: Notes = NOTES
         .iter()

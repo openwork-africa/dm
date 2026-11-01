@@ -19,7 +19,7 @@ pub fn day_of(file_name: &str) -> Option<&str> {
         .map(|(day, _)| day)
 }
 
-pub fn write(day: &str, messages: &[StoredMessage]) -> String {
+pub fn render(day: &str, messages: &[StoredMessage]) -> String {
     let mut lines = vec![format!("# {day}"), String::new()];
     lines.extend(messages.iter().map(|m| {
         format!(
@@ -62,7 +62,7 @@ mod tests {
             at: String::new(),
             compacted: false,
         };
-        let text = write(
+        let text = render(
             "2026-11-01",
             &[message("user", "one\ntwo"), message("assistant", "three")],
         );

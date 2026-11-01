@@ -33,7 +33,6 @@ impl ToolCall {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolOutput {
     pub id: String,
-    pub name: String,
     pub content: String,
 }
 

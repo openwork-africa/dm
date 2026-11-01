@@ -38,7 +38,7 @@ impl Store {
             let dir = self.transcript_dir(who);
             fs::create_dir_all(&dir)?;
             let file = dir.join(transcript::file_name(day, next_number(&dir, day)));
-            let text = transcript::write(day, folded);
+            let text = transcript::render(day, folded);
             let mut created = fs::File::create_new(&file)?;
             let marked = created
                 .write_all(text.as_bytes())

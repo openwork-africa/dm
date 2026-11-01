@@ -54,16 +54,13 @@ fn messages(chat: &Chat) -> Vec<Value> {
 
 impl Api for Bedrock {
     fn url(&self, provider: &Provider, model: &ModelEntry) -> Result<String> {
-        let base = match &provider.base_url {
-            Some(_) => provider.base_url()?.to_string(),
-            None => {
-                let region = provider
-                    .region
-                    .as_deref()
-                    .ok_or_else(|| anyhow!("a bedrock provider needs a region or a baseUrl"))?;
-                format!("https://bedrock-runtime.{region}.amazonaws.com")
-            }
-        };
+        let base = provider.base_url().map(str::to_string).or_else(|_| {
+            let region = provider
+                .region
+                .as_deref()
+                .ok_or_else(|| anyhow!("a bedrock provider needs a region or a baseUrl"))?;
+            Ok::<_, anyhow::Error>(format!("https://bedrock-runtime.{region}.amazonaws.com"))
+        })?;
         Ok(format!(
             "{base}/model/{}/converse-stream",
             path_segment(&model.id)

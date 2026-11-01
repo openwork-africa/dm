@@ -55,15 +55,11 @@ pub struct CostTier {
 pub struct ModelEntry {
     pub id: String,
     #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
     pub default: bool,
     #[serde(default)]
     pub thinking: bool,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
-    #[serde(default)]
-    pub context_window: Option<u64>,
     #[serde(default)]
     pub max_tokens: Option<u64>,
     #[serde(default)]
@@ -75,8 +71,6 @@ pub struct ModelEntry {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Provider {
-    #[serde(default)]
-    pub name: Option<String>,
     pub api: ApiStyle,
     /// Required by every style but `bedrock`, which builds it from `region` when it is left out.
     #[serde(default)]

@@ -32,7 +32,6 @@ pub async fn answer(
     tools: &[Tool<'_>],
     out: &mut dyn Sink,
 ) -> Result<Answer> {
-    chat.tools = tools.iter().map(|t| t.spec.clone()).collect();
     let mut answer = Answer {
         reply: String::new(),
         rounds: vec![],
@@ -50,13 +49,14 @@ pub async fn answer(
         }
         let mut results = vec![];
         for call in &turn.reply.calls {
+            let input = call.input();
             out.line(&Line::ToolCall {
                 id: &call.id,
                 name: &call.name,
-                arguments: call.input(),
+                arguments: input.clone(),
             });
             let content = match tools.iter().find(|t| t.spec.name == call.name) {
-                Some(tool) => (tool.run)(&call.input()),
+                Some(tool) => (tool.run)(&input),
                 None => format!("There is no tool called {}.", call.name),
             };
             out.line(&Line::ToolResult {
@@ -66,7 +66,6 @@ pub async fn answer(
             });
             results.push(ToolOutput {
                 id: call.id.clone(),
-                name: call.name.clone(),
                 content,
             });
         }

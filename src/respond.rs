@@ -143,7 +143,7 @@ pub async fn respond(
         Chat {
             system,
             messages: messages_of(history),
-            tools: vec![],
+            tools: tools.iter().map(|t| t.spec.clone()).collect(),
         },
         &tools,
         out,

@@ -86,7 +86,9 @@ Each provider names its API style in `api`, and lists its models:
 | `authHeader` | `true` sends the key as `Authorization: Bearer` whatever the style's own header |
 | `region` | `bedrock`: the AWS region |
 | `apiVersion` | `azure-foundry`: the `api-version` query parameter (default `2024-05-01-preview`) |
-| `models[]` | `id`, `name`, `default`, `thinking`, `reasoningEffort`, `contextWindow`, `maxTokens`, `headers`, `cost` |
+| `models[]` | `id`, `default`, `thinking`, `reasoningEffort`, `maxTokens`, `headers`, `cost` |
+
+A `name` on a provider or model and a model's `contextWindow` (which msg's `models.json` carries) are accepted and ignored.
 
 `cost` is US dollars per million tokens, `{ "input", "output", "cacheRead", "cacheWrite", "tiers": [{ "inputTokensAbove",
 ... }] }`; a call whose input is above a tier's threshold is priced at that tier. Keys are resolved only when a call is
