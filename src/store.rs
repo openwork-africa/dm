@@ -7,7 +7,7 @@
 //!   jobs      compaction and summaries still to run, with their attempts (jobs.rs)
 //!   memory    the full-text index `remember` searches, rebuilt from the files at each start (remember.rs)
 
-use crate::who::Who;
+use crate::{remember::INDEX, who::Who};
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::{
@@ -79,6 +79,7 @@ impl Store {
         conn.busy_timeout(Duration::from_secs(10))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(INDEX)?;
         Ok(Self {
             conn,
             root: root.to_path_buf(),
@@ -102,13 +103,6 @@ impl Store {
             .join(&who.agent)
             .join(format!("{}.md", who.person))
     }
-}
-
-pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// The names in a folder that pass `keep`; none when the folder does not exist yet.

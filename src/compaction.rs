@@ -37,7 +37,7 @@ impl Store {
             // Written before the messages are marked: a compacted message is always in a file.
             let dir = self.transcript_dir(who);
             fs::create_dir_all(&dir)?;
-            let file = dir.join(format!("{day}-{}.md", next_number(&dir, day)));
+            let file = dir.join(transcript::file_name(day, next_number(&dir, day)));
             let text = transcript::write(day, folded);
             let mut created = fs::File::create_new(&file)?;
             let marked = created
@@ -70,7 +70,7 @@ impl Store {
     pub fn transcripts_of(&self, who: &Who, day: &str) -> String {
         let dir = self.transcript_dir(who);
         (1..)
-            .map_while(|n| fs::read_to_string(dir.join(format!("{day}-{n}.md"))).ok())
+            .map_while(|n| fs::read_to_string(dir.join(transcript::file_name(day, n))).ok())
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -78,10 +78,9 @@ impl Store {
 
 /// One more than the day's compactions so far.
 fn next_number(dir: &Path, day: &str) -> usize {
-    let prefix = format!("{day}-");
-    crate::store::names_in(dir, |p| p.is_file())
+    crate::store::names_in(dir, Path::is_file)
         .iter()
-        .filter(|name| name.starts_with(&prefix))
+        .filter(|name| transcript::day_of(name) == Some(day))
         .count()
         + 1
 }

@@ -10,19 +10,19 @@ use crate::{
     notes::holds_for,
     provider::chat::ToolSpec,
     store::{names_in, Store},
-    transcript::entries,
+    transcript::{day_of, entries},
     who::Who,
 };
 use anyhow::Result;
 use rusqlite::params;
 use serde_json::json;
-use std::fs;
+use std::{fs, path::Path};
 
 pub const NAME: &str = "remember";
 const HITS: usize = 6;
 /// Where a note comes from, in place of a day.
 const KNOWN: &str = "what you know about them";
-const INDEX: &str = "
+pub(crate) const INDEX: &str = "
   CREATE VIRTUAL TABLE IF NOT EXISTS temp.memory USING fts5 (
     agent UNINDEXED, person UNINDEXED, origin UNINDEXED, text, hint, context UNINDEXED, tokenize = 'porter unicode61'
   );
@@ -63,19 +63,14 @@ fn fts_query(query: &str) -> Option<String> {
 impl Store {
     /// Loads the index from every transcript and the notes file of this agent and person.
     pub fn load_memory(&self, who: &Who) -> Result<()> {
-        self.conn.execute_batch(INDEX)?;
         self.conn.execute(
             "DELETE FROM memory WHERE agent = ?1 AND person = ?2",
             params![who.agent, who.person],
         )?;
         let dir = self.transcript_dir(who);
-        for file in names_in(&dir, |p| p.is_file()) {
-            if let Some(day) = file
-                .strip_suffix(".md")
-                .and_then(|name| name.rsplit_once('-'))
-                .map(|(day, _)| day.to_string())
-            {
-                self.index_transcript(who, &day, &fs::read_to_string(dir.join(&file))?)?;
+        for file in names_in(&dir, Path::is_file) {
+            if let Some(day) = day_of(&file) {
+                self.index_transcript(who, day, &fs::read_to_string(dir.join(&file))?)?;
             }
         }
         if let Ok(markdown) = fs::read_to_string(self.notes_file(who)) {
@@ -86,7 +81,6 @@ impl Store {
 
     /// Indexes one transcript, each message with the messages either side.
     pub fn index_transcript(&self, who: &Who, day: &str, transcript: &str) -> Result<()> {
-        self.conn.execute_batch(INDEX)?;
         let said = entries(transcript);
         for (i, text) in said.iter().enumerate() {
             let context = said[i.saturating_sub(1)..(i + 2).min(said.len())].join("\n");
@@ -100,7 +94,6 @@ impl Store {
 
     /// Replaces what is indexed of the person's notes with these.
     pub fn index_known(&self, who: &Who, markdown: &str) -> Result<()> {
-        self.conn.execute_batch(INDEX)?;
         self.conn.execute(
             "DELETE FROM memory WHERE agent = ?1 AND person = ?2 AND origin = ?3",
             params![who.agent, who.person, KNOWN],
@@ -121,7 +114,6 @@ impl Store {
         let Some(query) = fts_query(query) else {
             return Ok("Nothing found.".into());
         };
-        self.conn.execute_batch(INDEX)?;
         let mut search = self.conn.prepare_cached(&format!(
             "SELECT origin, context FROM memory WHERE memory MATCH ?1 AND agent = ?2 AND person = ?3 ORDER BY {WEIGHTS} LIMIT ?4"
         ))?;

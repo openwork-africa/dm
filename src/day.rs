@@ -9,23 +9,22 @@ pub fn zone(name: &str) -> Result<Tz> {
         .map_err(|_| anyhow!("`{name}` is not an IANA time zone, such as Africa/Johannesburg"))
 }
 
-/// Today in that zone, as YYYY-MM-DD.
-pub fn today(zone: Tz) -> String {
-    Utc::now()
-        .with_timezone(&zone)
-        .format("%Y-%m-%d")
-        .to_string()
+/// One instant where they are, so the day and the time the prompt shows cannot straddle midnight.
+pub struct Moment {
+    /// Today as YYYY-MM-DD.
+    pub day: String,
+    /// Their date and time as the prompt says it: "Friday 23 October 2026, 17:42 (Africa/Johannesburg)".
+    pub display: String,
 }
 
-/// Their date and time as the prompt says it: "Friday 23 October 2026, 17:42 (Africa/Johannesburg)".
-pub fn now(zone: Tz) -> String {
-    format!(
-        "{} ({})",
-        Utc::now()
-            .with_timezone(&zone)
-            .format("%A %-d %B %Y, %H:%M"),
-        zone.name()
-    )
+impl Moment {
+    pub fn new(zone: Tz) -> Self {
+        let now = Utc::now().with_timezone(&zone);
+        Self {
+            day: now.format("%Y-%m-%d").to_string(),
+            display: format!("{} ({})", now.format("%A %-d %B %Y, %H:%M"), zone.name()),
+        }
+    }
 }
 
 pub fn is_day(value: &str) -> bool {

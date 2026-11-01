@@ -1,13 +1,18 @@
 //! What each call used, counted in the `usage` table by day, agent, person, purpose (`chat`, `lookup`, `summary`) and
 //! model, and what it cost at the model's listed prices. Cost is kept in billionths of a dollar so it adds up exactly.
 
-use crate::{config::Cost, provider::chat::Usage, store::Store, who::Who};
+use crate::{
+    config::Cost,
+    provider::{chat::Usage, Model},
+    store::Store,
+    who::Who,
+};
 use anyhow::Result;
 use rusqlite::params;
 
 /// What a call cost in US dollars: the prices of the highest tier its input is above, else the base prices. A model
 /// with no listed cost costs nothing.
-pub fn cost_usd(cost: Option<&Cost>, usage: &Usage) -> f64 {
+fn cost_usd(cost: Option<&Cost>, usage: &Usage) -> f64 {
     let Some(cost) = cost else { return 0.0 };
     let all_input = usage.input + usage.cache_read + usage.cache_write;
     let (input, output, cache_read, cache_write) = cost
@@ -27,15 +32,16 @@ pub fn cost_usd(cost: Option<&Cost>, usage: &Usage) -> f64 {
 }
 
 impl Store {
-    pub fn count_usage(
+    /// Counts one call and returns what it cost in US dollars.
+    pub fn count_call(
         &self,
         day: &str,
         who: &Who,
         purpose: &str,
-        model: &str,
+        model: &Model,
         usage: &Usage,
-        usd: f64,
-    ) -> Result<()> {
+    ) -> Result<f64> {
+        let usd = cost_usd(model.cost(), usage);
         self.conn.execute(
             "INSERT INTO usage (day, agent, person, purpose, model, calls, input, output, cache_read, cache_write, nano_usd)
              VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9, ?10)
@@ -47,7 +53,7 @@ impl Store {
                 who.agent,
                 who.person,
                 purpose,
-                model,
+                model.label(),
                 usage.input as i64,
                 usage.output as i64,
                 usage.cache_read as i64,
@@ -55,7 +61,7 @@ impl Store {
                 (usd * 1e9).round() as i64
             ],
         )?;
-        Ok(())
+        Ok(usd)
     }
 }
 

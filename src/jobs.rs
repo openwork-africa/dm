@@ -2,13 +2,7 @@
 //! runs what is due once the answer is out, before it exits; a job that fails waits, doubling from RETRY_MS, and is
 //! tried again by the next dm or `dm jobs`, up to MAX_ATTEMPTS times.
 
-use crate::{
-    config::Providers,
-    provider::Model,
-    store::{now_ms, Store},
-    summary,
-    who::Who,
-};
+use crate::{config::Providers, provider::Model, store::Store, summary, who::Who};
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -44,6 +38,13 @@ impl Job {
             model: model.into(),
         }
     }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 const MAX_ATTEMPTS: i64 = 5;

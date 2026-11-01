@@ -10,7 +10,6 @@ use crate::{
         Model,
     },
     store::Store,
-    usage::cost_usd,
     who::Who,
 };
 use anyhow::{anyhow, Result};
@@ -60,14 +59,7 @@ pub async fn update(store: &Store, model: &Model, who: &Who, day: &str) -> Resul
         tools: vec![tool()],
     };
     let turn = model.ask(&chat, &mut |_| {}).await?;
-    store.count_usage(
-        day,
-        who,
-        "summary",
-        &model.label(),
-        &turn.usage,
-        cost_usd(model.cost(), &turn.usage),
-    )?;
+    store.count_call(day, who, "summary", model, &turn.usage)?;
     let call = turn
         .reply
         .calls

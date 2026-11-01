@@ -6,6 +6,19 @@ use crate::messages::{StoredMessage, USER};
 const PERSON: &str = "Person: ";
 const AGENT: &str = "Agent: ";
 
+/// The file name of a day's `n`th transcript.
+pub fn file_name(day: &str, n: usize) -> String {
+    format!("{day}-{n}.md")
+}
+
+/// The day a transcript file is of; none for any other file.
+pub fn day_of(file_name: &str) -> Option<&str> {
+    file_name
+        .strip_suffix(".md")?
+        .rsplit_once('-')
+        .map(|(day, _)| day)
+}
+
 pub fn write(day: &str, messages: &[StoredMessage]) -> String {
     let mut lines = vec![format!("# {day}"), String::new()];
     lines.extend(messages.iter().map(|m| {

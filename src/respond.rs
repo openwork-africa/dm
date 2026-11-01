@@ -14,7 +14,6 @@ use crate::{
     remember,
     request::Request,
     store::Store,
-    usage::cost_usd,
     who::Who,
 };
 use anyhow::{anyhow, Result};
@@ -54,7 +53,10 @@ pub async fn respond(
     };
     let who = Who::new(request.agent(), request.person.as_deref())?;
     let zone = day::zone(&request.time_zone.clone().unwrap_or_else(day::system_zone))?;
-    let (today, now) = (day::today(zone), day::now(zone));
+    let day::Moment {
+        day: today,
+        display: now,
+    } = day::Moment::new(zone);
 
     if let Some(yesterday) = store.move_to_day(&who, &today)? {
         store.close_day(&who, &yesterday, &model.label())?;
@@ -71,10 +73,9 @@ pub async fn respond(
     let mut total = Usage::default();
     let mut cost = 0.0;
     let mut count = |purpose: &str, model: &Model, usage: Usage| -> Result<()> {
-        let usd = cost_usd(model.cost(), &usage);
         total.add(usage);
-        cost += usd;
-        store.count_usage(&today, &who, purpose, &model.label(), &usage, usd)
+        cost += store.count_call(&today, &who, purpose, model, &usage)?;
+        Ok(())
     };
 
     let look_up = match &decider {
