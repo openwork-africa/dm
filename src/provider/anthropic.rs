@@ -4,12 +4,11 @@ use super::{
     chat::{Chat, Event, Message, Usage},
     count,
     framing::Frame,
-    json_of, Api, KeyHeader, StreamReader,
+    json_of, Api, KeyHeader, StreamReader, ThinkingBlocks,
 };
 use crate::config::{ModelEntry, Provider};
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
 
 const VERSION: &str = "2023-06-01";
 /// Messages requires a limit; this one when the model sets none.
@@ -85,8 +84,7 @@ impl Api for AnthropicMessages {
 #[derive(Default)]
 struct Reader {
     usage: Usage,
-    /// Thinking blocks being streamed, by index.
-    thinking: BTreeMap<u64, Value>,
+    thinking: ThinkingBlocks,
 }
 
 impl StreamReader for Reader {
@@ -107,56 +105,42 @@ impl StreamReader for Reader {
             "content_block_start" => {
                 let block = &event["content_block"];
                 match block["type"].as_str().unwrap_or_default() {
-                    "tool_use" => events.push(Event::ToolCall {
-                        slot: index as usize,
-                        id: block["id"].as_str().map(str::to_string),
-                        name: block["name"].as_str().map(str::to_string),
-                        arguments: String::new(),
-                    }),
+                    "tool_use" => events.push(Event::call_start(
+                        index as usize,
+                        &block["id"],
+                        &block["name"],
+                    )),
                     "thinking" => {
-                        self.thinking.insert(index, json!({ "type": "thinking", "thinking": block["thinking"], "signature": block["signature"] }));
+                        self.thinking
+                            .start(index, &block["thinking"], &block["signature"]);
                     }
                     "redacted_thinking" => events.push(Event::Replay(block.clone())),
-                    "text" => events.push(Event::Text(
-                        block["text"].as_str().unwrap_or_default().to_string(),
-                    )),
+                    "text" => events.push(Event::text(&block["text"])),
                     _ => {}
                 }
             }
             "content_block_delta" => {
                 let delta = &event["delta"];
                 match delta["type"].as_str().unwrap_or_default() {
-                    "text_delta" => events.push(Event::Text(
-                        delta["text"].as_str().unwrap_or_default().to_string(),
+                    "text_delta" => events.push(Event::text(&delta["text"])),
+                    "input_json_delta" => events.push(Event::call_arguments(
+                        index as usize,
+                        &delta["partial_json"],
                     )),
-                    "input_json_delta" => events.push(Event::ToolCall {
-                        slot: index as usize,
-                        id: None,
-                        name: None,
-                        arguments: delta["partial_json"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string(),
-                    }),
-                    kind @ ("thinking_delta" | "signature_delta") => {
-                        let field = if kind == "thinking_delta" {
-                            "thinking"
-                        } else {
-                            "signature"
-                        };
-                        if let Some(block) = self.thinking.get_mut(&index) {
-                            let joined = format!(
-                                "{}{}",
-                                block[field].as_str().unwrap_or_default(),
-                                delta[field].as_str().unwrap_or_default()
-                            );
-                            block[field] = json!(joined);
-                        }
+                    "thinking_delta" | "signature_delta" => {
+                        self.thinking
+                            .push(index, &delta["thinking"], &delta["signature"])
                     }
                     _ => {}
                 }
             }
-            "content_block_stop" => events.extend(self.thinking.remove(&index).map(Event::Replay)),
+            "content_block_stop" => {
+                events.extend(self.thinking.take(index).map(|(thinking, signature)| {
+                    Event::Replay(
+                        json!({ "type": "thinking", "thinking": thinking, "signature": signature }),
+                    )
+                }))
+            }
             "message_delta" => {
                 let usage = &event["usage"];
                 if usage["output_tokens"].is_u64() {

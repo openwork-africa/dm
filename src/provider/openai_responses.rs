@@ -1,10 +1,9 @@
 //! OpenAI Responses. Calls are made with `store: false`; reasoning items come back whole and go back with their turn.
 
 use super::{
-    chat::{Chat, Event, Message, Usage},
-    count,
+    chat::{Chat, Event, Message},
     framing::Frame,
-    json_of, Api, StreamReader,
+    json_of, openai_usage, text, Api, StreamReader,
 };
 use crate::config::{ModelEntry, Provider};
 use anyhow::{bail, Result};
@@ -88,25 +87,13 @@ impl StreamReader for Reader {
         let item = &event["item"];
         let mut events = vec![];
         match event["type"].as_str().unwrap_or_default() {
-            "response.output_text.delta" => events.push(Event::Text(
-                event["delta"].as_str().unwrap_or_default().to_string(),
-            )),
+            "response.output_text.delta" => events.push(Event::text(&event["delta"])),
             "response.output_item.added" if item["type"] == "function_call" => {
-                events.push(Event::ToolCall {
-                    slot,
-                    id: item["call_id"].as_str().map(str::to_string),
-                    name: item["name"].as_str().map(str::to_string),
-                    arguments: String::new(),
-                })
+                events.push(Event::call_start(slot, &item["call_id"], &item["name"]))
             }
             "response.function_call_arguments.delta" => {
                 self.streamed.insert(slot);
-                events.push(Event::ToolCall {
-                    slot,
-                    id: None,
-                    name: None,
-                    arguments: event["delta"].as_str().unwrap_or_default().to_string(),
-                });
+                events.push(Event::call_arguments(slot, &event["delta"]));
             }
             "response.output_item.done" => match item["type"].as_str().unwrap_or_default() {
                 "reasoning" => events.push(Event::Replay(item.clone())),
@@ -114,19 +101,18 @@ impl StreamReader for Reader {
                     slot,
                     id: item["call_id"].as_str().map(str::to_string),
                     name: None,
-                    arguments: item["arguments"].as_str().unwrap_or_default().to_string(),
+                    arguments: text(&item["arguments"]),
                 }),
                 _ => {}
             },
             "response.completed" => {
                 let usage = &event["response"]["usage"];
-                let cached = count(&usage["input_tokens_details"]["cached_tokens"]);
-                events.push(Event::Usage(Usage {
-                    input: count(&usage["input_tokens"]).saturating_sub(cached),
-                    output: count(&usage["output_tokens"]),
-                    cache_read: cached,
-                    cache_write: 0,
-                }));
+                events.push(Event::Usage(openai_usage(
+                    usage,
+                    "input_tokens",
+                    "output_tokens",
+                    "input_tokens_details",
+                )));
             }
             "response.failed" | "response.incomplete" | "error" => {
                 let error = if event["response"]["error"].is_object() {

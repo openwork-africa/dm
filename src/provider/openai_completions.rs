@@ -1,15 +1,15 @@
 //! OpenAI chat completions, which most hosts speak.
 
 use super::{
-    chat::{Chat, Event, Message, Usage},
-    count,
+    chat::{Chat, Event, Message},
     framing::Frame,
-    json_of, Api, StreamReader,
+    json_of, openai_usage, text, Api, StreamReader,
 };
 use crate::config::{ModelEntry, Provider};
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
 
+#[derive(Default)]
 pub struct OpenAiCompletions;
 
 fn messages(chat: &Chat) -> Vec<Value> {
@@ -38,8 +38,7 @@ fn messages(chat: &Chat) -> Vec<Value> {
     all
 }
 
-/// The chat-completions body, shared with Azure Foundry.
-pub(super) fn body(model: &ModelEntry, chat: &Chat) -> Value {
+fn body(model: &ModelEntry, chat: &Chat) -> Value {
     let mut body = json!({
         "model": model.id,
         "messages": messages(chat),
@@ -62,8 +61,7 @@ pub(super) fn body(model: &ModelEntry, chat: &Chat) -> Value {
     body
 }
 
-/// Reads chat-completion chunks, shared with Azure Foundry.
-pub(super) struct ChunkReader;
+struct ChunkReader;
 
 impl StreamReader for ChunkReader {
     fn read(&mut self, frame: &Frame) -> Result<Vec<Event>> {
@@ -78,29 +76,25 @@ impl StreamReader for ChunkReader {
         }
         let mut events = vec![];
         let delta = &chunk["choices"][0]["delta"];
-        if let Some(text) = delta["content"].as_str() {
-            events.push(Event::Text(text.to_string()));
+        if delta["content"].is_string() {
+            events.push(Event::text(&delta["content"]));
         }
         for piece in delta["tool_calls"].as_array().into_iter().flatten() {
             events.push(Event::ToolCall {
                 slot: piece["index"].as_u64().unwrap_or(0) as usize,
                 id: piece["id"].as_str().map(str::to_string),
                 name: piece["function"]["name"].as_str().map(str::to_string),
-                arguments: piece["function"]["arguments"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string(),
+                arguments: text(&piece["function"]["arguments"]),
             });
         }
         let usage = &chunk["usage"];
         if usage.is_object() {
-            let cached = count(&usage["prompt_tokens_details"]["cached_tokens"]);
-            events.push(Event::Usage(Usage {
-                input: count(&usage["prompt_tokens"]).saturating_sub(cached),
-                output: count(&usage["completion_tokens"]),
-                cache_read: cached,
-                cache_write: 0,
-            }));
+            events.push(Event::Usage(openai_usage(
+                usage,
+                "prompt_tokens",
+                "completion_tokens",
+                "prompt_tokens_details",
+            )));
         }
         Ok(events)
     }

@@ -5,12 +5,11 @@ use super::{
     chat::{Chat, Event, Message, Usage},
     count,
     framing::{Frame, Framing},
-    Api, StreamReader,
+    Api, StreamReader, ThinkingBlocks,
 };
 use crate::config::{ModelEntry, Provider};
 use anyhow::{anyhow, bail, Result};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
 
 pub struct Bedrock;
 
@@ -111,8 +110,7 @@ impl Api for Bedrock {
 
 #[derive(Default)]
 struct Reader {
-    /// Reasoning blocks being streamed, by index: their text and signature.
-    reasoning: BTreeMap<u64, (String, String)>,
+    reasoning: ThinkingBlocks,
 }
 
 impl StreamReader for Reader {
@@ -131,36 +129,33 @@ impl StreamReader for Reader {
             "contentBlockStart" => {
                 let tool = &event["start"]["toolUse"];
                 if tool.is_object() {
-                    events.push(Event::ToolCall {
-                        slot: index as usize,
-                        id: tool["toolUseId"].as_str().map(str::to_string),
-                        name: tool["name"].as_str().map(str::to_string),
-                        arguments: String::new(),
-                    });
+                    events.push(Event::call_start(
+                        index as usize,
+                        &tool["toolUseId"],
+                        &tool["name"],
+                    ));
                 }
             }
             "contentBlockDelta" => {
                 let delta = &event["delta"];
-                if let Some(text) = delta["text"].as_str() {
-                    events.push(Event::Text(text.to_string()));
+                if delta["text"].is_string() {
+                    events.push(Event::text(&delta["text"]));
                 }
-                if let Some(input) = delta["toolUse"]["input"].as_str() {
-                    events.push(Event::ToolCall {
-                        slot: index as usize,
-                        id: None,
-                        name: None,
-                        arguments: input.to_string(),
-                    });
+                if delta["toolUse"]["input"].is_string() {
+                    events.push(Event::call_arguments(
+                        index as usize,
+                        &delta["toolUse"]["input"],
+                    ));
                 }
                 let reasoning = &delta["reasoningContent"];
                 if reasoning.is_object() {
-                    let (text, signature) = self.reasoning.entry(index).or_default();
-                    text.push_str(reasoning["text"].as_str().unwrap_or_default());
-                    signature.push_str(reasoning["signature"].as_str().unwrap_or_default());
+                    self.reasoning.open(index);
+                    self.reasoning
+                        .push(index, &reasoning["text"], &reasoning["signature"]);
                 }
             }
             "contentBlockStop" => {
-                if let Some((text, signature)) = self.reasoning.remove(&index) {
+                if let Some((text, signature)) = self.reasoning.take(index) {
                     events.push(Event::Replay(json!({ "reasoningContent": { "reasoningText": { "text": text, "signature": signature } } })));
                 }
             }

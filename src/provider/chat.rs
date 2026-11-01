@@ -94,6 +94,32 @@ pub enum Event {
     Usage(Usage),
 }
 
+impl Event {
+    pub fn text(value: &Value) -> Self {
+        Event::Text(super::text(value))
+    }
+
+    /// A tool call begins: its id and name.
+    pub fn call_start(slot: usize, id: &Value, name: &Value) -> Self {
+        Event::ToolCall {
+            slot,
+            id: id.as_str().map(str::to_string),
+            name: name.as_str().map(str::to_string),
+            arguments: String::new(),
+        }
+    }
+
+    /// More of a tool call's arguments.
+    pub fn call_arguments(slot: usize, arguments: &Value) -> Self {
+        Event::ToolCall {
+            slot,
+            id: None,
+            name: None,
+            arguments: super::text(arguments),
+        }
+    }
+}
+
 /// A model's whole answer to one call.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Turn {

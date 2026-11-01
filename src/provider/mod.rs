@@ -15,10 +15,11 @@ use crate::{
     secret,
 };
 use anyhow::{anyhow, bail, Result};
-use chat::{Chat, Event, Turn, TurnBuilder};
+use chat::{Chat, Event, Turn, TurnBuilder, Usage};
 use framing::{Frame, Framing};
 use futures_util::StreamExt;
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// How a style sends the key.
 pub enum KeyHeader {
@@ -53,7 +54,7 @@ fn api_for(style: ApiStyle) -> Box<dyn Api> {
         ApiStyle::OpenAiCompletions => Box::new(openai_completions::OpenAiCompletions),
         ApiStyle::OpenAiResponses => Box::new(openai_responses::OpenAiResponses),
         ApiStyle::Bedrock => Box::new(bedrock::Bedrock),
-        ApiStyle::AzureFoundry => Box::new(azure_foundry::AzureFoundry),
+        ApiStyle::AzureFoundry => Box::<azure_foundry::AzureFoundry>::default(),
     }
 }
 
@@ -147,4 +148,45 @@ fn json_of(frame: &Frame) -> Option<Value> {
 
 fn count(value: &Value) -> u64 {
     value.as_u64().unwrap_or(0)
+}
+
+fn text(value: &Value) -> String {
+    value.as_str().unwrap_or_default().to_string()
+}
+
+/// OpenAI's usage object: the cached part of the input is counted apart from the rest.
+fn openai_usage(usage: &Value, input_key: &str, output_key: &str, details_key: &str) -> Usage {
+    let cached = count(&usage[details_key]["cached_tokens"]);
+    Usage {
+        input: count(&usage[input_key]).saturating_sub(cached),
+        output: count(&usage[output_key]),
+        cache_read: cached,
+        cache_write: 0,
+    }
+}
+
+/// Thinking blocks being streamed, by index: their text and signature.
+#[derive(Default)]
+struct ThinkingBlocks(BTreeMap<u64, (String, String)>);
+
+impl ThinkingBlocks {
+    fn start(&mut self, index: u64, thinking: &Value, signature: &Value) {
+        self.0.insert(index, (text(thinking), text(signature)));
+    }
+
+    /// For a style that sends no start: the block exists from its first piece.
+    fn open(&mut self, index: u64) {
+        self.0.entry(index).or_default();
+    }
+
+    fn push(&mut self, index: u64, thinking: &Value, signature: &Value) {
+        if let Some((all_thinking, all_signature)) = self.0.get_mut(&index) {
+            all_thinking.push_str(&text(thinking));
+            all_signature.push_str(&text(signature));
+        }
+    }
+
+    fn take(&mut self, index: u64) -> Option<(String, String)> {
+        self.0.remove(&index)
+    }
 }
