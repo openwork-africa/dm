@@ -1,6 +1,6 @@
 //! The providers and models a request names, in msg's `models.json` shape.
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -117,6 +117,14 @@ pub struct Target {
 }
 
 impl Target {
+    fn new(provider_id: &str, provider: &Provider, model: ModelEntry) -> Self {
+        Self {
+            provider_id: provider_id.to_string(),
+            provider: provider.clone(),
+            model,
+        }
+    }
+
     /// `<provider>/<model-id>`.
     pub fn label(&self) -> String {
         format!("{}/{}", self.provider_id, self.model.id)
@@ -146,24 +154,17 @@ impl Providers {
                 id: model_id.to_string(),
                 ..ModelEntry::default()
             });
-        Ok(Target {
-            provider_id: provider_id.to_string(),
-            provider: provider.clone(),
-            model,
-        })
+        Ok(Target::new(provider_id, provider, model))
     }
 
     fn default_target(&self) -> Result<Target> {
-        for (id, provider) in &self.0 {
-            if let Some(model) = provider.models.iter().find(|m| m.default) {
-                return Ok(Target {
-                    provider_id: id.clone(),
-                    provider: provider.clone(),
-                    model: model.clone(),
-                });
-            }
-        }
-        bail!("no model was named and none is marked default")
+        self.0
+            .iter()
+            .find_map(|(id, provider)| {
+                let model = provider.models.iter().find(|m| m.default)?;
+                Some(Target::new(id, provider, model.clone()))
+            })
+            .ok_or_else(|| anyhow!("no model was named and none is marked default"))
     }
 }
 
