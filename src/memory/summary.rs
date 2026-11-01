@@ -4,12 +4,14 @@
 //! `remember`.
 
 use crate::{
-    notes::{known_markdown, Notes, NOTES},
     provider::{
         chat::{Chat, Message, ToolSpec},
         Model,
     },
-    store::Store,
+    store::{
+        notes::{known_markdown, Notes, NOTES},
+        Store,
+    },
     who::Who,
 };
 use anyhow::{anyhow, Result};
@@ -17,7 +19,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::{collections::BTreeMap, fs};
 
-const INSTRUCTIONS: &str = include_str!("summary.md");
+const INSTRUCTIONS: &str = include_str!("../prompts/summary.md");
 const TOOL: &str = "notes";
 
 fn tool() -> ToolSpec {

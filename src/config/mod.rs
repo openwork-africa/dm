@@ -1,5 +1,9 @@
 //! The providers and models a request names, in msg's `models.json` shape.
 
+pub mod home;
+pub mod request;
+pub(crate) mod secret;
+
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;

@@ -1,11 +1,11 @@
 //! OpenAI Responses. Calls are made with `store: false`; reasoning items come back whole and go back with their turn.
 
-use super::{
+use crate::config::{ModelEntry, Provider};
+use crate::provider::{
     chat::{Chat, Event, Message},
     framing::Frame,
     json_of, openai_usage, text, Api, StreamReader,
 };
-use crate::config::{ModelEntry, Provider};
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;

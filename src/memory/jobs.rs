@@ -2,7 +2,7 @@
 //! runs what is due once the answer is out, before it exits; a job that fails waits, doubling from RETRY_MS, and is
 //! tried again by the next dm or `dm jobs`, up to MAX_ATTEMPTS times.
 
-use crate::{config::Providers, provider::Model, store::Store, summary, who::Who};
+use crate::{config::Providers, memory::summary, provider::Model, store::Store, who::Who};
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};

@@ -7,10 +7,9 @@
 //! written.
 
 use crate::{
-    notes::holds_for,
+    memory::transcript::{day_of, entries},
     provider::chat::ToolSpec,
-    store::{names_in, Store},
-    transcript::{day_of, entries},
+    store::{names_in, notes::holds_for, Store},
     who::Who,
 };
 use anyhow::Result;

@@ -1,13 +1,13 @@
 //! Amazon Bedrock's Converse API, streamed (`converse-stream`), signed with a Bedrock API key as a bearer token. The
 //! URL is `baseUrl` when given, else the runtime endpoint for the provider's `region`.
 
-use super::{
+use crate::config::{ModelEntry, Provider};
+use crate::provider::{
     chat::{Chat, Event, Message, Usage},
     count,
     framing::{Frame, Framing},
     Api, StreamReader, ThinkingBlocks,
 };
-use crate::config::{ModelEntry, Provider};
 use anyhow::{anyhow, bail, Result};
 use serde_json::{json, Value};
 

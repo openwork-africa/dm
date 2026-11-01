@@ -7,7 +7,11 @@
 //!   jobs      compaction and summaries still to run, with their attempts (jobs.rs)
 //!   memory    the full-text index `remember` searches, rebuilt from the files at each start (remember.rs)
 
-use crate::{remember::INDEX, who::Who};
+pub(crate) mod messages;
+pub(crate) mod notes;
+mod usage;
+
+use crate::{memory::remember::INDEX, who::Who};
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::{

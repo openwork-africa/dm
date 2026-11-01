@@ -5,7 +5,11 @@
 //!   - once 16 messages are in a day's history, all but the newest 4 are compacted;
 //!   - when they speak on a new day, the day before is closed: everything left is compacted, and its summary follows.
 
-use crate::{jobs::Job, store::Store, transcript, who::Who};
+use crate::{
+    memory::{jobs::Job, transcript},
+    store::Store,
+    who::Who,
+};
 use anyhow::Result;
 use std::{fs, io::Write, path::Path};
 

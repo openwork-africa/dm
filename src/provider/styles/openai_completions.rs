@@ -1,11 +1,11 @@
 //! OpenAI chat completions, which most hosts speak.
 
-use super::{
+use crate::config::{ModelEntry, Provider};
+use crate::provider::{
     chat::{Chat, Event, Message},
     framing::Frame,
     json_of, openai_usage, text, Api, StreamReader,
 };
-use crate::config::{ModelEntry, Provider};
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
 

@@ -2,7 +2,7 @@
 //! tool the tool is run and the model asked again, until it answers without one.
 
 use crate::{
-    output::{Line, Sink},
+    answer::output::{Line, Sink},
     provider::{
         chat::{Chat, Message, ToolOutput, ToolSpec, Usage},
         Model,

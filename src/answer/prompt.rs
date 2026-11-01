@@ -1,9 +1,9 @@
 //! The system prompt: the base prompt with their date and time and "how to be with them", then the agent's own
 //! instructions, then what the tool is for when it is offered, and last the lookup's instruction when it said yes.
 
-use crate::notes::{lines_of, Layer, Notes};
+use crate::store::notes::{lines_of, Layer, Notes};
 
-const BASE: &str = include_str!("prompt.md");
+const BASE: &str = include_str!("../prompts/prompt.md");
 const TOOL: &str = "You have one tool, remember. It searches what you know about this person and what the two of you said before that is no longer in this conversation. Use it when the message refers to something about them or something said before, rather than guessing. You have no access to the web.";
 const LOOK_UP: &str = "Before you answer this message, call remember to look up what you know about them and what was said before. Write the query yourself: a few key words for what you need, including the kind of thing (music, job, birthday, sister).";
 

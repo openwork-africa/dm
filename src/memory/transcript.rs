@@ -1,7 +1,7 @@
 //! A transcript file: the day as a heading, then each message as it was said, `Person:` or `Agent:` first. A message
 //! may run over several lines.
 
-use crate::messages::{StoredMessage, USER};
+use crate::store::messages::{StoredMessage, USER};
 
 const PERSON: &str = "Person: ";
 const AGENT: &str = "Agent: ";

@@ -1,22 +1,29 @@
 //! Answering one message, start to end: the day, the history, the lookup, the answer streamed out, and what it used.
 //! Compaction and summaries are only queued here (jobs.rs); they run once the answer is out.
 
+mod lookup;
+pub mod output;
+mod prompt;
+mod tools;
+
 use crate::{
-    answer::{answer, Tool},
-    day, lookup,
-    messages::{StoredMessage, ASSISTANT, USER},
-    output::{Line, Sink},
-    prompt::Prompt,
+    config::request::Request,
+    day,
+    memory::remember,
     provider::{
         chat::{Chat, Message, Reply, Usage},
         Model,
     },
-    remember,
-    request::Request,
-    store::Store,
+    store::{
+        messages::{StoredMessage, ASSISTANT, USER},
+        Store,
+    },
     who::Who,
 };
 use anyhow::{anyhow, Result};
+use output::{Line, Sink};
+use prompt::Prompt;
+use tools::{answer, Tool};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Answered {

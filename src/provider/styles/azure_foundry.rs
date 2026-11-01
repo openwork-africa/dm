@@ -2,8 +2,9 @@
 //! parameter. `baseUrl` is the endpoint up to `/chat/completions`, such as
 //! `https://<resource>.services.ai.azure.com/models` or `https://<resource>.openai.azure.com/openai/deployments/<name>`.
 
-use super::{chat::Chat, openai_completions::OpenAiCompletions, Api, KeyHeader, StreamReader};
+use super::openai_completions::OpenAiCompletions;
 use crate::config::{ModelEntry, Provider};
+use crate::provider::{chat::Chat, Api, KeyHeader, StreamReader};
 use anyhow::Result;
 use serde_json::Value;
 

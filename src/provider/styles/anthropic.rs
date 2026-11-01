@@ -1,12 +1,12 @@
 //! Anthropic Messages. Thinking blocks come back with a signature and go back unchanged with their turn.
 
-use super::{
+use crate::config::{ModelEntry, Provider};
+use crate::provider::{
     chat::{Chat, Event, Message, Usage},
     count,
     framing::Frame,
     json_of, Api, KeyHeader, StreamReader, ThinkingBlocks,
 };
-use crate::config::{ModelEntry, Provider};
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
 

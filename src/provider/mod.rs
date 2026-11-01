@@ -2,18 +2,14 @@
 //! stream back into events. `Model` does the rest the same way for all of them: resolving the key and headers, sending,
 //! and building the turn from the events.
 
-mod anthropic;
-mod azure_foundry;
-mod bedrock;
 pub mod chat;
 pub mod framing;
-mod openai_completions;
-mod openai_responses;
+mod styles;
 mod think;
 
-use crate::{
-    config::{ApiStyle, Cost, ModelEntry, Provider, Target},
+use crate::config::{
     secret::{self, Secret},
+    ApiStyle, Cost, ModelEntry, Provider, Target,
 };
 use anyhow::{anyhow, bail, Result};
 use chat::{Chat, Event, Turn, TurnBuilder, Usage};
@@ -21,6 +17,7 @@ use framing::{Frame, Framing};
 use futures_util::StreamExt;
 use serde_json::Value;
 use std::collections::BTreeMap;
+use styles::{anthropic, azure_foundry, bedrock, openai_completions, openai_responses};
 
 /// How a style sends the key.
 pub enum KeyHeader {

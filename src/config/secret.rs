@@ -35,7 +35,7 @@ pub fn resolve(raw: &str) -> Result<Secret> {
 fn run(command: &str) -> Result<String> {
     let mut shell = Command::new("sh");
     shell.arg("-c").arg(command);
-    if let Some(home) = crate::home::user() {
+    if let Some(home) = crate::config::home::user() {
         shell.env("HOME", home);
     }
     let output = shell

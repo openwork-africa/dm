@@ -222,12 +222,14 @@ and their checksums.
 | file | |
 | --- | --- |
 | `src/main.rs` | the command line |
-| `src/request.rs`, `src/config.rs`, `src/secret.rs` | the request, the providers and models, and key resolution |
-| `src/respond.rs`, `src/answer.rs`, `src/prompt.rs`, `src/output.rs` | one answer start to end, the tool loop, the system prompt, the output lines |
-| `src/provider/` | `Model` and the `Api` trait, one file per style, the stream framing (SSE and AWS event stream) |
-| `src/store.rs`, `src/messages.rs`, `src/day.rs`, `src/who.rs` | the home and its database, messages by day, time zones, names |
-| `src/compaction.rs`, `src/transcript.rs`, `src/jobs.rs` | transcripts and the job queue |
-| `src/notes.rs`, `src/summary.rs`, `src/remember.rs`, `src/lookup.rs`, `src/usage.rs` | the two layers of notes, the daily summary, the tool, the lookup decision, usage and cost |
+| `src/config/` | the providers and models (`mod.rs`), the request, key resolution, the home directory |
+| `src/answer/` | one answer start to end (`mod.rs`), the tool loop (`tools.rs`), the lookup decision, the system prompt, the output lines |
+| `src/memory/` | transcripts, compaction, the job queue, the daily summary, the `remember` tool |
+| `src/store/` | the home and its database (`mod.rs`), split by table: messages, the two layers of notes, usage and cost |
+| `src/day.rs`, `src/who.rs` | time zones, names |
+| `src/provider/` | `Model` and the `Api` trait, the chat shape, the stream framing (SSE and AWS event stream), `<think>` filtering |
+| `src/provider/styles/` | one file per API style |
+| `src/prompts/` | the system prompt and the summary instructions |
 
 ## License
 
