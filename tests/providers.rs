@@ -1,0 +1,261 @@
+//! Each API style against a mock: the answer streams out, a tool call is run and answered, and usage and cost come
+//! back in the done line.
+
+mod common;
+
+use common::{named_sse, serve, sse, Reply};
+use dm::{output::Collected, provider::framing::aws_event, Store};
+use serde_json::{json, Value};
+
+async fn ask(api: &str, replies: Vec<Reply>) -> (Vec<Value>, Vec<common::Received>) {
+    let mock = serve(replies);
+    let home = tempfile::tempdir().unwrap();
+    let store = Store::open(home.path()).unwrap();
+    let mut out = Collected::default();
+    dm::respond(
+        &store,
+        &reqwest::Client::new(),
+        &common::request(api, &mock.url, "what is my sister called?"),
+        &mut out,
+    )
+    .await
+    .unwrap();
+    (out.0, mock.requests())
+}
+
+fn kinds(lines: &[Value]) -> Vec<&str> {
+    lines.iter().map(|l| l["type"].as_str().unwrap()).collect()
+}
+
+fn check(lines: &[Value]) {
+    assert_eq!(
+        kinds(lines),
+        vec!["tool_call", "tool_result", "text", "text", "done"]
+    );
+    assert_eq!(lines[0]["name"], "remember");
+    assert_eq!(lines[0]["arguments"], json!({ "query": "sister" }));
+    assert_eq!(lines[1]["content"], "Nothing found.");
+    let done = &lines[4];
+    assert_eq!(done["reply"], "Her name is Lindi.");
+    assert_eq!(done["model"], "mock/m1");
+    assert_eq!(
+        done["usage"],
+        json!({ "input": 20, "output": 10, "cacheRead": 0, "cacheWrite": 0 })
+    );
+    assert!((done["costUsd"].as_f64().unwrap() - (20.0 + 20.0) / 1e6).abs() < 1e-12);
+}
+
+#[tokio::test]
+async fn openai_completions() {
+    let usage = json!({ "prompt_tokens": 10, "completion_tokens": 5 });
+    let (lines, sent) = ask(
+        "openai-completions",
+        vec![
+            sse(&[
+                json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "remember", "arguments": "{\"que" } }] } }] }),
+                json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "function": { "arguments": "ry\":\"sister\"}" } }] } }] }),
+                json!({ "choices": [], "usage": usage }),
+            ]),
+            sse(&[
+                json!({ "choices": [{ "delta": { "content": "Her name " } }] }),
+                json!({ "choices": [{ "delta": { "content": "is Lindi." } }] }),
+                json!({ "choices": [], "usage": usage }),
+            ]),
+        ],
+    )
+    .await;
+    check(&lines);
+    assert_eq!(sent[0].path, "/chat/completions");
+    assert_eq!(
+        sent[0].header("authorization"),
+        Some("Bearer fake-literal-key")
+    );
+    assert_eq!(sent[0].body["tools"][0]["function"]["name"], "remember");
+    let messages = sent[1].body["messages"].as_array().unwrap();
+    assert_eq!(messages[messages.len() - 2]["tool_calls"][0]["id"], "c1");
+    assert_eq!(
+        messages[messages.len() - 1],
+        json!({ "role": "tool", "tool_call_id": "c1", "content": "Nothing found." })
+    );
+}
+
+#[tokio::test]
+async fn azure_foundry() {
+    let usage = json!({ "prompt_tokens": 10, "completion_tokens": 5 });
+    let (lines, sent) = ask(
+        "azure-foundry",
+        vec![
+            sse(&[
+                json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "remember", "arguments": "{\"query\":\"sister\"}" } }] } }] }),
+                json!({ "choices": [], "usage": usage }),
+            ]),
+            sse(&[
+                json!({ "choices": [{ "delta": { "content": "Her name " } }] }),
+                json!({ "choices": [{ "delta": { "content": "is Lindi." } }], "usage": usage }),
+            ]),
+        ],
+    )
+    .await;
+    check(&lines);
+    assert_eq!(
+        sent[0].path,
+        "/chat/completions?api-version=2024-05-01-preview"
+    );
+    assert_eq!(sent[0].header("api-key"), Some("fake-literal-key"));
+    assert_eq!(sent[0].header("authorization"), None);
+}
+
+#[tokio::test]
+async fn anthropic_messages() {
+    let start = json!({ "type": "message_start", "message": { "usage": { "input_tokens": 10, "output_tokens": 1 } } });
+    let (lines, sent) = ask(
+        "anthropic-messages",
+        vec![
+            named_sse(&[
+                start.clone(),
+                json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "", "signature": "" } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "look it up" } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "signature_delta", "signature": "sig" } }),
+                json!({ "type": "content_block_stop", "index": 0 }),
+                json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "t1", "name": "remember", "input": {} } }),
+                json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "{\"query\":" } }),
+                json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "\"sister\"}" } }),
+                json!({ "type": "content_block_stop", "index": 1 }),
+                json!({ "type": "message_delta", "usage": { "output_tokens": 5 } }),
+                json!({ "type": "message_stop" }),
+            ]),
+            named_sse(&[
+                start,
+                json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "Her name " } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "is Lindi." } }),
+                json!({ "type": "message_delta", "usage": { "output_tokens": 5 } }),
+                json!({ "type": "message_stop" }),
+            ]),
+        ],
+    )
+    .await;
+    check(&lines);
+    assert_eq!(sent[0].path, "/v1/messages");
+    assert_eq!(sent[0].header("x-api-key"), Some("fake-literal-key"));
+    assert_eq!(sent[0].header("anthropic-version"), Some("2023-06-01"));
+    assert_eq!(
+        sent[0].body["tools"][0]["input_schema"]["required"],
+        json!(["query"])
+    );
+    let messages = sent[1].body["messages"].as_array().unwrap();
+    let assistant = &messages[messages.len() - 2]["content"];
+    assert_eq!(
+        assistant[0],
+        json!({ "type": "thinking", "thinking": "look it up", "signature": "sig" })
+    );
+    assert_eq!(
+        assistant[1],
+        json!({ "type": "tool_use", "id": "t1", "name": "remember", "input": { "query": "sister" } })
+    );
+    assert_eq!(
+        messages[messages.len() - 1]["content"][0]["tool_use_id"],
+        "t1"
+    );
+}
+
+#[tokio::test]
+async fn openai_responses() {
+    let done = json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 10, "output_tokens": 5 } } });
+    let reasoning =
+        json!({ "type": "reasoning", "id": "rs_1", "encrypted_content": "enc", "summary": [] });
+    let (lines, sent) = ask(
+        "openai-responses",
+        vec![
+            named_sse(&[
+                json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning }),
+                json!({ "type": "response.output_item.added", "output_index": 1, "item": { "type": "function_call", "call_id": "f1", "name": "remember", "arguments": "" } }),
+                json!({ "type": "response.function_call_arguments.delta", "output_index": 1, "delta": "{\"query\":\"sister\"}" }),
+                json!({ "type": "response.output_item.done", "output_index": 1, "item": { "type": "function_call", "call_id": "f1", "name": "remember", "arguments": "{\"query\":\"sister\"}" } }),
+                done.clone(),
+            ]),
+            named_sse(&[
+                json!({ "type": "response.output_text.delta", "output_index": 0, "delta": "Her name " }),
+                json!({ "type": "response.output_text.delta", "output_index": 0, "delta": "is Lindi." }),
+                done,
+            ]),
+        ],
+    )
+    .await;
+    check(&lines);
+    assert_eq!(sent[0].path, "/responses");
+    assert_eq!(sent[0].body["store"], false);
+    assert_eq!(sent[0].body["tools"][0]["name"], "remember");
+    let input = sent[1].body["input"].as_array().unwrap();
+    let n = input.len();
+    assert_eq!(input[n - 3], reasoning);
+    assert_eq!(
+        input[n - 2],
+        json!({ "type": "function_call", "call_id": "f1", "name": "remember", "arguments": "{\"query\":\"sister\"}" })
+    );
+    assert_eq!(
+        input[n - 1],
+        json!({ "type": "function_call_output", "call_id": "f1", "output": "Nothing found." })
+    );
+}
+
+fn bedrock_stream(events: &[(&str, Value)]) -> Reply {
+    let body = events
+        .iter()
+        .flat_map(|(name, payload)| {
+            aws_event(
+                &[(":event-type", name), (":message-type", "event")],
+                &payload.to_string(),
+            )
+        })
+        .collect();
+    Reply {
+        status: 200,
+        content_type: "application/vnd.amazon.eventstream",
+        body,
+    }
+}
+
+#[tokio::test]
+async fn bedrock_converse_stream() {
+    let metadata = json!({ "usage": { "inputTokens": 10, "outputTokens": 5 } });
+    let (lines, sent) = ask(
+        "bedrock",
+        vec![
+            bedrock_stream(&[
+                ("messageStart", json!({ "role": "assistant" })),
+                ("contentBlockStart", json!({ "contentBlockIndex": 0, "start": { "toolUse": { "toolUseId": "b1", "name": "remember" } } })),
+                ("contentBlockDelta", json!({ "contentBlockIndex": 0, "delta": { "toolUse": { "input": "{\"query\":\"sister\"}" } } })),
+                ("contentBlockStop", json!({ "contentBlockIndex": 0 })),
+                ("messageStop", json!({ "stopReason": "tool_use" })),
+                ("metadata", metadata.clone()),
+            ]),
+            bedrock_stream(&[
+                ("contentBlockDelta", json!({ "contentBlockIndex": 0, "delta": { "text": "Her name " } })),
+                ("contentBlockDelta", json!({ "contentBlockIndex": 0, "delta": { "text": "is Lindi." } })),
+                ("messageStop", json!({ "stopReason": "end_turn" })),
+                ("metadata", metadata),
+            ]),
+        ],
+    )
+    .await;
+    check(&lines);
+    assert_eq!(sent[0].path, "/model/m1/converse-stream");
+    assert_eq!(
+        sent[0].header("authorization"),
+        Some("Bearer fake-literal-key")
+    );
+    assert_eq!(
+        sent[0].body["toolConfig"]["tools"][0]["toolSpec"]["name"],
+        "remember"
+    );
+    let messages = sent[1].body["messages"].as_array().unwrap();
+    assert_eq!(
+        messages[messages.len() - 2]["content"][0]["toolUse"]["input"],
+        json!({ "query": "sister" })
+    );
+    assert_eq!(
+        messages[messages.len() - 1]["content"][0]["toolResult"]["toolUseId"],
+        "b1"
+    );
+}

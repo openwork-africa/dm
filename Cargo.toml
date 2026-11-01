@@ -1,0 +1,37 @@
+[package]
+name = "dm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Answers a direct message straight away, keeps transcripts, summarises them, and gives the model a tool to recall them."
+license = "MIT"
+repository = "https://github.com/openwork-africa/dm"
+readme = "README.md"
+
+[lib]
+name = "dm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dm"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.10"
+clap = { version = "4", features = ["derive"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util"] }
+
+[profile.release]
+strip = true
+lto = "thin"
