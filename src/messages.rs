@@ -3,7 +3,7 @@
 
 use crate::{store::Store, who::Who};
 use anyhow::Result;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -83,17 +83,20 @@ impl Store {
             .optional()?)
     }
 
-    /// Sets the day they are speaking on, and hands back the one before it when it changed.
+    /// Sets the day they are speaking on, and hands back the one before it when it changed. Two dm processes at a day
+    /// change cannot both see it change: the write lock is taken before the read.
     pub fn move_to_day(&self, who: &Who, day: &str) -> Result<Option<String>> {
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
         let last = self.last_day(who)?;
         if last.as_deref() == Some(day) {
             return Ok(None);
         }
-        self.conn.execute(
+        tx.execute(
             "INSERT INTO people (agent, person, last_day) VALUES (?1, ?2, ?3)
              ON CONFLICT (agent, person) DO UPDATE SET last_day = ?3",
             params![who.agent, who.person, day],
         )?;
+        tx.commit()?;
         Ok(last)
     }
 }

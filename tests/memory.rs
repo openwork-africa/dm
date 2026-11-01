@@ -270,3 +270,30 @@ async fn summaries_wait_for_providers() {
         "an unknown provider is a failure, retried later"
     );
 }
+
+#[test]
+fn two_processes_at_a_day_change_give_one_close() {
+    let home = tempfile::tempdir().unwrap();
+    let store = Store::open(home.path()).unwrap();
+    store.move_to_day(&who(), "2026-10-31").unwrap();
+    for round in 0..5 {
+        let day = format!("2026-11-0{}", round + 1);
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let (path, day, barrier) =
+                    (home.path().to_path_buf(), day.clone(), barrier.clone());
+                std::thread::spawn(move || {
+                    let store = Store::open(&path).unwrap();
+                    barrier.wait();
+                    store.move_to_day(&who(), &day).unwrap()
+                })
+            })
+            .collect();
+        let closed = threads
+            .into_iter()
+            .filter_map(|t| t.join().unwrap())
+            .count();
+        assert_eq!(closed, 1, "{day} was closed {closed} times");
+    }
+}
