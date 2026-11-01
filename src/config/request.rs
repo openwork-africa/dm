@@ -1,6 +1,6 @@
 //! One call to dm, as JSON: the providers, which model, who is speaking, and the message.
 
-use crate::config::Providers;
+use crate::config::{tools::Tools, Providers};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::Path;
@@ -27,9 +27,13 @@ pub struct Request {
     pub system: Option<String>,
     #[serde(default)]
     pub message: Option<String>,
-    /// Decide before each answer whether it needs `remember`; without it, `remember` is always offered.
+    /// Decide before each answer whether it needs `remember` (when it is one of the tools); without it, it is always
+    /// offered.
     #[serde(default)]
     pub lookup: Option<Lookup>,
+    /// The tools offered, by name; else `--tools`, else `<home>/tools.json`, else `remember` alone.
+    #[serde(default)]
+    pub tools: Option<Tools>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -43,6 +47,11 @@ pub struct Lookup {
 impl Request {
     pub fn parse(json: &str) -> Result<Self> {
         serde_json::from_str(json).context("the request is not valid JSON of the right shape")
+    }
+
+    /// The tools offered: the request's, else `remember` alone.
+    pub fn tools(&self) -> Tools {
+        self.tools.clone().unwrap_or_default()
     }
 
     pub fn agent(&self) -> &str {

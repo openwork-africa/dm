@@ -1,5 +1,5 @@
-//! dm answers a direct message straight away, keeps transcripts, summarises them, and gives the model a `remember`
-//! tool to recall them. See README.md.
+//! dm answers a direct message straight away, keeps transcripts, summarises them, gives the model a `remember` tool
+//! to recall them, and offers it the tools it is given (builtin, JavaScript under Deno, HTTP). See README.md.
 
 pub mod answer;
 pub mod config;
@@ -7,6 +7,7 @@ pub mod day;
 pub mod memory;
 pub mod provider;
 pub mod store;
+pub mod tools;
 pub mod who;
 
 pub use answer as respond;

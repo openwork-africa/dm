@@ -98,6 +98,11 @@ impl Store {
         self.transcripts().join(&who.agent).join(&who.person)
     }
 
+    /// Where JavaScript skills are kept, by name and content hash (tools/js.rs).
+    pub fn skills_dir(&self) -> PathBuf {
+        self.root.join("skills")
+    }
+
     pub fn notes_dir(&self) -> PathBuf {
         self.root.join("notes")
     }

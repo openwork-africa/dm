@@ -3,7 +3,7 @@ name = "dm"
 version = "0.1.2"
 edition = "2021"
 rust-version = "1.80"
-description = "Answers a direct message straight away, keeps transcripts, summarises them, and gives the model a tool to recall them."
+description = "Answers a direct message straight away, keeps transcripts, summarises them, gives the model a tool to recall them, and offers it the tools (skills) it is given."
 license = "MIT"
 repository = "https://github.com/openwork-africa/dm"
 readme = "README.md"
@@ -26,7 +26,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt", "macros"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt", "macros", "process", "time", "io-util"] }
 
 [dev-dependencies]
 tempfile = "3"

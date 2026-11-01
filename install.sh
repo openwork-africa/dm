@@ -50,3 +50,7 @@ case ":$PATH:" in
   *":$dir:"*) ;;
   *) echo "Add $dir to your PATH to run it as dm." ;;
 esac
+if [ -z "${DM_DENO:-}" ] && ! command -v deno >/dev/null 2>&1; then
+  echo "JavaScript skills (tools.json \"js\" entries) run under Deno, which was not found; it was not installed."
+  echo "To use them, install it (https://deno.com: curl -fsSL https://deno.land/install.sh | sh) or set DM_DENO."
+fi

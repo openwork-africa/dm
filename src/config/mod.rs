@@ -3,6 +3,7 @@
 pub mod home;
 pub mod request;
 pub(crate) mod secret;
+pub mod tools;
 
 use anyhow::{anyhow, Result};
 use serde::Deserialize;

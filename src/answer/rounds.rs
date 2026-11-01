@@ -4,20 +4,15 @@
 use crate::{
     answer::output::{Line, Sink},
     provider::{
-        chat::{Chat, Message, ToolOutput, ToolSpec, Usage},
+        chat::{Chat, Message, ToolOutput, Usage},
         Model,
     },
+    tools::{self, Tool},
 };
 use anyhow::{bail, Result};
-use serde_json::Value;
 
 /// Calls before dm stops asking: room for a couple of lookups and the answer.
 const MAX_ROUNDS: usize = 4;
-
-pub struct Tool<'a> {
-    pub spec: ToolSpec,
-    pub run: Box<dyn Fn(&Value) -> String + 'a>,
-}
 
 pub struct Answer {
     /// Everything the model said, across its calls.
@@ -29,7 +24,7 @@ pub struct Answer {
 pub async fn answer(
     model: &Model,
     mut chat: Chat,
-    tools: &[Tool<'_>],
+    tools: &[Box<dyn Tool + '_>],
     out: &mut dyn Sink,
 ) -> Result<Answer> {
     let mut answer = Answer {
@@ -55,8 +50,8 @@ pub async fn answer(
                 name: &call.name,
                 arguments: input.clone(),
             });
-            let content = match tools.iter().find(|t| t.spec.name == call.name) {
-                Some(tool) => (tool.run)(&input),
+            let content = match tools.iter().find(|t| t.spec().name == call.name) {
+                Some(tool) => tools::run(tool.as_ref(), &input).await,
                 None => format!("There is no tool called {}.", call.name),
             };
             out.line(&Line::ToolResult {

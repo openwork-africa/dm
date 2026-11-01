@@ -1,11 +1,13 @@
 # dm
 
 `dm` answers a direct message straight away. It keeps each conversation by agent, person and day, copies older
-messages into transcripts, summarises them once a day into notes about the person, and gives the model one tool,
-`remember`, to recall them. It is a Rust library and a single static binary, and it talks to Anthropic, OpenAI
-(chat completions and Responses), Amazon Bedrock and Azure AI Foundry.
+messages into transcripts, summarises them once a day into notes about the person, and gives the model a tool,
+`remember`, to recall them. It offers the model the other tools it is given, too: skills that are JavaScript modules
+(run under Deno, held to the hosts and environment they declare) or HTTP endpoints. It is a Rust library and a single
+static binary, and it talks to Anthropic, OpenAI (chat completions and Responses), Amazon Bedrock and Azure AI Foundry.
 
-**dm has no web support.** It does no web search and reads no links; `remember` searches only what dm itself has kept.
+dm itself does no web search and reads no links; `remember` searches only what dm itself has kept. A skill such as
+[`web_search`](https://github.com/openwork-africa/skills) is how a model reaches the web.
 
 ## Install
 
@@ -15,7 +17,8 @@ curl -fsSL https://raw.githubusercontent.com/openwork-africa/dm/main/install.sh 
 
 This picks the release archive for your system (Linux x86_64 and aarch64, static musl builds that run on any
 distribution; macOS Apple silicon and Intel), checks its SHA-256 checksum, and installs `dm` to `$HOME/.local/bin`
-without root. Set `DM_VERSION=v0.1.0` for a particular release, or `DM_INSTALL_DIR` for another folder. Or build it:
+without root. JavaScript skills need [Deno](https://deno.com) on `PATH` (or `DM_DENO`); the script says so when it is
+missing, and installs nothing else. Set `DM_VERSION=v0.1.0` for a particular release, or `DM_INSTALL_DIR` for another folder. Or build it:
 `cargo build --release` (stable Rust), giving `target/release/dm`.
 
 ## Calling it
@@ -41,6 +44,7 @@ dm --request request.json -p        # the reply alone, as plain text
 | `--model <provider>/<model-id>` | Else the request's `model`, else the model marked `default`. |
 | `--agent`, `--person`, `--time-zone`, `--system`, `--system-file` | Set the request's fields of the same name. |
 | `--providers <file>` | The providers, when the request has none; else `<home>/providers.json`. |
+| `--tools <file or URL>` | The tools, when the request has none; else `<home>/tools.json`; else `remember` alone. |
 | `--home <dir>` | Where dm keeps its data: `$DM_HOME`, else `~/.dm` (from the OS when `HOME` is not set). |
 | `--no-jobs` | Leave compaction and summaries for `dm jobs`. |
 
@@ -57,7 +61,8 @@ A flag wins over the request's own field. The working directory is never written
   "timeZone": "Africa/Johannesburg",
   "system": "optional instructions for this agent",
   "message": "the direct message",
-  "lookup": { "model": "<provider>/<model-id>" }
+  "lookup": { "model": "<provider>/<model-id>" },
+  "tools": { "remember": { "builtin": true } }
 }
 ```
 
@@ -66,9 +71,11 @@ A flag wins over the request's own field. The working directory is never written
 - `agent` defaults to `default`, the reserved name for the agent used when none is named. `person` is optional; a
   conversation with no person is kept as `_`. Both may hold letters, digits and `. _ - @ +`.
 - `timeZone` decides what "today" is for the person; it defaults to this machine's (`TZ`, else `/etc/localtime`).
-- `lookup` is optional. Without it, `remember` is offered on every message and the model decides. With it, the named
-  model (or the answer's) is first asked whether answering needs something about the person or something said before:
-  on a yes the answer is offered `remember` and told to use it; on a no it gets no tool. A failed decision is a no.
+- `lookup` is optional, and applies only when `remember` is one of the tools. Without it, `remember` is offered on
+  every message and the model decides. With it, the named model (or the answer's) is first asked whether answering
+  needs something about the person or something said before: on a yes the answer is offered `remember` and told to use
+  it; on a no it is not offered `remember` (the other tools still are). A failed decision is a no.
+- `tools` is optional: see [Tools](#tools).
 
 A providers file (`--providers`, or `<home>/providers.json`) has the same `providers` in msg's `models.json` shape:
 `{ "providers": { ... } }`.
@@ -154,6 +161,70 @@ Azure AI Foundry:
 
 These are placeholders: dm's repository holds no keys.
 
+### Tools
+
+The tools the model is offered, as JSON keyed by name, one entry per tool. dm offers only what is listed, `remember`
+included. It comes from the request's `tools`, else `--tools <file or URL>`, else `<home>/tools.json`; with none of
+them, dm offers `remember` alone, as it did before there were tools.
+
+```json
+{
+  "remember":   { "builtin": true },
+  "web_search": { "js": "https://openwork.africa/skill/web_search/index.js",
+                  "sha256": "<the module's sha256, hex>",
+                  "env": { "TAVILY_URL": "http://127.0.0.1:48402/tools/tavily", "TAVILY_API_KEY": "!cat \"$HOME/.dm/key\"" } },
+  "some_api":   { "http": "https://example.com/api/some_api", "headers": { "x-api-key": "$SOME_API_KEY" } }
+}
+```
+
+The name is the key: it is what the model is given, whatever name the skill gives itself (a different one is noted on
+stderr). Values in `env` and `headers` resolve like `apiKey` (`$NAME`, `!command`, or a literal), once an answer, and
+are never printed: a value that turns up in a tool's result or error is shown as `***`. An entry may also carry a
+`description`, which is ignored, so an entry of a skills `index.json` can be copied in as it is.
+
+| kind | entry | |
+| --- | --- | --- |
+| builtin | `{ "builtin": true }` | dm's own, run in-process. The one builtin is `remember`. |
+| js | `{ "js": "<url or path>", "sha256"?, "env"? }` | A JavaScript module run under Deno. |
+| http | `{ "http": "<url>", "headers"? }` | An endpoint: `GET` describes it, `POST` calls it. |
+
+**A JavaScript skill** is one Node.js-style ES module that describes itself (`node:` imports and `npm:` packages work):
+
+```js
+export const skill = {
+  name: "web_search",
+  description: "Search the web ...",
+  input: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },  // JSON Schema
+  net: ["api.tavily.com", "127.0.0.1:48402"],   // the hosts it may reach
+  env: ["TAVILY_URL", "TAVILY_API_KEY"],        // the environment variables it may read
+};
+export default async function (input) { /* ... */ return result; }  // any JSON value
+```
+
+- The module is fetched once into `<home>/skills/<name>/<sha256>.js`, keyed by its content's hash. With `sha256` in
+  the entry, only that module is run: a cached file with that hash is used without fetching, and a fetched module
+  with another hash is refused (its calls answer with the error), so a changed file at the address does not run
+  until the entry moves to its hash. Without `sha256`, the address is fetched for each answer.
+- Its `skill` is read once a hash (kept as `<sha256>.json` beside it) by a wrapper dm writes, with no environment and
+  no permissions but reading the module itself:
+  `deno run --quiet --no-prompt --no-config --no-lock --allow-read=<module> <home>/skills/describe.js file://<module>`.
+  `input` must be a JSON schema of `type: object`.
+- A call runs `deno run --quiet --no-prompt --no-config --no-lock --allow-read=<module> --allow-net=<skill.net>
+  --allow-env=<skill.env> <home>/skills/run.js file://<module>`, the input JSON on stdin and the result JSON on
+  stdout (what the module prints goes to stderr). The environment is empty but for `DENO_DIR`
+  (`<home>/skills/.deno`) and the declared names, whose values come from the entry's `env`; a name the entry gives
+  that the module does not declare is not resolved. A call may take 30 seconds before Deno is killed, and print 1 MiB.
+- Deno is `DM_DENO`, else the first `deno` on `PATH`.
+
+**An HTTP skill** is an endpoint that describes itself: `GET <endpoint>` answers `{ "name", "description", "input" }`
+(asked once an answer), and `POST <endpoint>` with the input JSON answers with the result JSON. Each call has 30
+seconds and 1 MiB.
+
+Whatever goes wrong with a tool (Deno missing, a fetch or description that fails, a hash that does not match, a refused
+permission, a non-zero exit, a timeout, an answer that is not JSON) becomes its result, `"<name> failed: <why>"`, for
+the model to read, and the answer goes on. A tool that cannot be set up is still offered under its name, and saying
+why is all its calls do.
+
 ### The output
 
 With `stream-json`, one JSON object per line on stdout, the answer first:
@@ -173,7 +244,7 @@ reply's text is printed, as it streams. Errors go to stderr as `dm: ...`, with e
 
 - **The answer.** The system prompt is a neutral base prompt with the person's date and time and the "how to be with
   them" notes, then the request's `system`, then what `remember` is for when it is offered. The model is sent today's
-  history (the day's messages not yet compacted) after it. When it calls `remember`, dm runs it and asks again, up to
+  history (the day's messages not yet compacted) after it. When it calls a tool, dm runs it and asks again, up to
   four calls.
 - **Transcripts.** Once 16 messages are in a day's history, all but the newest 4 are copied as they were into
   `transcripts/<agent>/<person>/<day>-<n>.md` and marked compacted, all or none. When the person writes on a new day,
@@ -197,6 +268,9 @@ reply's text is printed, as it streams. Errors go to stderr as `dm: ...`, with e
 ~/.dm/                               --home, or $DM_HOME
   dm.db                              messages, people, notes, usage, jobs (SQLite)
   providers.json                     optional: the providers when a request has none
+  tools.json                         optional: the tools when a request has none
+  skills/<name>/<sha256>.js, .json   JavaScript skills by content hash, and what each says it is
+  skills/describe.js, run.js, .deno/ dm's Deno wrappers, and Deno's cache
   transcripts/<agent>/<person or _>/<day>-<n>.md
   notes/<agent>/<person or _>.md
 ```
@@ -216,14 +290,16 @@ reply's text is printed, as it streams. Errors go to stderr as `dm: ...`, with e
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
-The tests run each API style against a local mock server; no keys are needed. A `v*` tag builds the release archives
+The tests run each API style against a local mock server; no keys are needed. The tools tests need Deno on `PATH`
+(and the network, once, for one `npm:` package). A `v*` tag builds the release archives
 and their checksums.
 
 | file | |
 | --- | --- |
 | `src/main.rs` | the command line |
-| `src/config/` | the providers and models (`mod.rs`), the request, key resolution, the home directory |
-| `src/answer/` | one answer start to end (`mod.rs`), the tool loop (`tools.rs`), the lookup decision, the system prompt, the output lines |
+| `src/config/` | the providers and models (`mod.rs`), the request, the tools JSON, key resolution, the home directory |
+| `src/answer/` | one answer start to end (`mod.rs`), the tool loop (`rounds.rs`), the lookup decision, the system prompt, the output lines |
+| `src/tools/` | the `Tool` trait and setting up a request's tools (`mod.rs`), one file per kind (builtin, js, http), what a skill says of itself |
 | `src/memory/` | transcripts, compaction, the job queue, the daily summary, the `remember` tool |
 | `src/store/` | the home and its database (`mod.rs`), split by table: messages, the two layers of notes, usage and cost |
 | `src/day.rs`, `src/who.rs` | time zones, names |

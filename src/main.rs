@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use dm::{
-    config::Providers,
+    config::{tools::Tools, Providers},
     day, home, jobs,
     output::{JsonLines, PlainText, Sink},
     request::{read_providers, Request, DEFAULT_AGENT},
@@ -75,6 +75,10 @@ struct Ask {
     system_file: Option<PathBuf>,
     #[command(flatten)]
     providers: ProvidersArg,
+    /// The tools, by name, when the request has none: a file or an http(s) address [default: <home>/tools.json, else
+    /// remember alone]
+    #[arg(long, value_name = "FILE_OR_URL")]
+    tools: Option<String>,
     /// Leave compaction and summaries for `dm jobs` instead of running them before exit
     #[arg(long)]
     no_jobs: bool,
@@ -167,6 +171,14 @@ impl Ask {
         }
     }
 
+    /// The tools source when the request names none: `--tools`, else the home's tools.json when there is one.
+    fn tools_source(&self, home: &Path) -> Option<String> {
+        self.tools.clone().or_else(|| {
+            let default = home.join("tools.json");
+            default.exists().then(|| default.display().to_string())
+        })
+    }
+
     /// The request, with what the flags say over it.
     fn request(&self, home: &Path) -> Result<Request> {
         let message = self.print.clone().flatten();
@@ -209,7 +221,10 @@ async fn run(cli: Cli, home: PathBuf) -> Result<()> {
     match cli.command {
         None => {
             let ask = cli.ask;
-            let request = ask.request(&home)?;
+            let mut request = ask.request(&home)?;
+            if let (None, Some(source)) = (&request.tools, ask.tools_source(&home)) {
+                request.tools = Some(Tools::load(&source, &http).await?);
+            }
             let store = Store::open(&home)?;
             dm::respond(&store, &http, &request, sink_for(ask.format()).as_mut()).await?;
             if !ask.no_jobs {

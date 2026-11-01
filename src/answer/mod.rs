@@ -4,7 +4,7 @@
 mod lookup;
 pub mod output;
 mod prompt;
-mod tools;
+mod rounds;
 
 use crate::{
     config::request::Request,
@@ -18,12 +18,13 @@ use crate::{
         messages::{StoredMessage, ASSISTANT, USER},
         Store,
     },
+    tools::{self, Setup},
     who::Who,
 };
 use anyhow::{anyhow, Result};
 use output::{Line, Sink};
 use prompt::Prompt;
-use tools::{answer, Tool};
+use rounds::answer;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Answered {
@@ -52,13 +53,17 @@ impl Ledger<'_> {
     }
 }
 
-/// The model that answers, and the one that decides on a lookup when the request asks for one.
+/// The model that answers, and the one that decides on a lookup when the request asks for one and `remember` is a tool.
 fn models(request: &Request, http: &reqwest::Client) -> Result<(Model, Option<Model>)> {
     let model = Model::new(
         http.clone(),
         request.providers.target(request.model.as_deref())?,
     )?;
-    let decider = match &request.lookup {
+    let decider = match request
+        .lookup
+        .as_ref()
+        .filter(|_| request.tools().has(remember::NAME))
+    {
         Some(lookup) => Some(Model::new(
             http.clone(),
             request
@@ -121,36 +126,36 @@ pub async fn respond(
         }
         None => None,
     };
-    let offered = look_up.unwrap_or(true);
+    let listed = request.tools();
+    let offer_remember = listed.has(remember::NAME) && look_up != Some(false);
     let notes = store.notes(&who)?;
+    let setup = Setup {
+        store,
+        who: &who,
+        http,
+    };
+    let tools = tools::open(
+        &listed,
+        |name| name == remember::NAME && !offer_remember,
+        &setup,
+    )
+    .await;
     let system = Prompt {
         notes: &notes,
         now: &now,
         system: request.system.as_deref(),
-        tool_offered: offered,
+        remember: offer_remember,
+        others: tools.len() > usize::from(offer_remember),
         look_up: look_up == Some(true),
     }
     .render();
-    let tools = if offered {
-        store.load_memory(&who)?;
-        vec![Tool {
-            spec: remember::tool(),
-            run: Box::new(|args| {
-                store
-                    .recall(&who, args["query"].as_str().unwrap_or_default())
-                    .unwrap_or_else(|err| format!("remember failed: {err}"))
-            }),
-        }]
-    } else {
-        vec![]
-    };
 
     let answer = answer(
         &model,
         Chat {
             system,
             messages: messages_of(history),
-            tools: tools.iter().map(|t| t.spec.clone()).collect(),
+            tools: tools.iter().map(|t| t.spec().clone()).collect(),
         },
         &tools,
         out,
