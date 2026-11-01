@@ -330,3 +330,26 @@ async fn a_claimed_job_is_not_run_twice() {
     assert_eq!(a.unwrap().done + b.unwrap().done, 1);
     assert_eq!(mock.requests().len(), 1, "the model was asked once");
 }
+
+#[test]
+fn a_failed_compaction_leaves_no_orphan_transcript() {
+    let home = tempfile::tempdir().unwrap();
+    let store = Store::open(home.path()).unwrap();
+    let day = "2026-11-01";
+    store.add_message(&who(), day, "user", "hello").unwrap();
+    rusqlite::Connection::open(home.path().join("dm.db"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER no_marking BEFORE UPDATE ON messages
+             BEGIN SELECT RAISE(ABORT, 'disk trouble'); END;",
+        )
+        .unwrap();
+
+    assert!(store.compact(&who(), day, true, "mock/m1").is_err());
+    let dir = home.path().join("transcripts/default/thandi");
+    assert!(
+        fs::read_dir(dir).unwrap().next().is_none(),
+        "the transcript was removed with the failure"
+    );
+    assert_eq!(store.history(&who(), day).unwrap().len(), 1);
+}

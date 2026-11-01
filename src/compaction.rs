@@ -39,10 +39,18 @@ impl Store {
             fs::create_dir_all(&dir)?;
             let file = dir.join(format!("{day}-{}.md", next_number(&dir, day)));
             let text = transcript::write(day, folded);
-            fs::File::create_new(&file)?.write_all(text.as_bytes())?;
-            if !self.mark_compacted(&folded.iter().map(|m| m.id).collect::<Vec<_>>())? {
-                // Another compaction got there first: its file stands, this one goes.
-                fs::remove_file(&file)?;
+            let mut created = fs::File::create_new(&file)?;
+            let marked = created
+                .write_all(text.as_bytes())
+                .map_err(Into::into)
+                .and_then(|()| {
+                    self.mark_compacted(&folded.iter().map(|m| m.id).collect::<Vec<_>>())
+                });
+            if !matches!(marked, Ok(true)) {
+                // Failed, or another compaction got there first (its file stands): this one goes.
+                let _ = fs::remove_file(&file);
+            }
+            if !marked? {
                 return Ok(());
             }
             self.index_transcript(who, day, &text)?;
