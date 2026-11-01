@@ -188,10 +188,10 @@ async fn run(cli: Cli) -> Result<()> {
         None => {
             let ask = cli.ask;
             let request = ask.request(&home)?;
-            let mut store = Store::open(&home)?;
+            let store = Store::open(&home)?;
             dm::respond(&store, &http, &request, sink_for(ask.format()).as_mut()).await?;
             if !ask.no_jobs {
-                jobs::run_due(&mut store, Some(&request.providers), &http).await?;
+                jobs::run_due(&store, Some(&request.providers), &http).await?;
             }
         }
         Some(Command::Jobs { request, providers }) => {
@@ -199,8 +199,8 @@ async fn run(cli: Cli) -> Result<()> {
                 Some(path) => Some(read_request(&path)?.providers),
                 None => providers.load(&home)?,
             };
-            let mut store = Store::open(&home)?;
-            let ran = jobs::run_due(&mut store, providers.as_ref(), &http).await?;
+            let store = Store::open(&home)?;
+            let ran = jobs::run_due(&store, providers.as_ref(), &http).await?;
             println!("{}", serde_json::to_string(&ran)?);
         }
         Some(Command::History { agent, person, day }) => {

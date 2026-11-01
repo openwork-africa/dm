@@ -57,8 +57,8 @@ impl Store {
     }
 
     /// Marks the messages compacted, all or none: false when any already was (another compaction got there first).
-    pub fn mark_compacted(&mut self, ids: &[i64]) -> Result<bool> {
-        let tx = self.conn.transaction()?;
+    pub fn mark_compacted(&self, ids: &[i64]) -> Result<bool> {
+        let tx = self.conn.unchecked_transaction()?;
         for id in ids {
             if tx.execute(
                 "UPDATE messages SET compacted = 1 WHERE id = ?1 AND compacted = 0",

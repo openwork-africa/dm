@@ -108,7 +108,7 @@ impl Store {
 
 /// Runs every due job once, oldest first, with those it adds. Summaries need `providers`; without them they wait.
 pub async fn run_due(
-    store: &mut Store,
+    store: &Store,
     providers: Option<&Providers>,
     http: &reqwest::Client,
 ) -> Result<Ran> {

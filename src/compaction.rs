@@ -26,7 +26,7 @@ impl Store {
         self.enqueue(&Job::compact(who, day, true, model))
     }
 
-    pub fn compact(&mut self, who: &Who, day: &str, close: bool, model: &str) -> Result<()> {
+    pub fn compact(&self, who: &Who, day: &str, close: bool, model: &str) -> Result<()> {
         let pending = self.history(who, day)?;
         let folded = if close {
             &pending[..]

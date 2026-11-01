@@ -38,7 +38,7 @@ fn who() -> Who {
 #[tokio::test]
 async fn sixteen_messages_compact_all_but_the_newest_four() {
     let home = tempfile::tempdir().unwrap();
-    let mut store = Store::open(home.path()).unwrap();
+    let store = Store::open(home.path()).unwrap();
     let day = "2026-11-01";
     for n in 0..COMPACT_AFTER - 1 {
         store
@@ -61,7 +61,7 @@ async fn sixteen_messages_compact_all_but_the_newest_four() {
         vec![Job::compact(&who(), day, false, "mock/m1")]
     );
 
-    let ran = run_due(&mut store, None, &reqwest::Client::new())
+    let ran = run_due(&store, None, &reqwest::Client::new())
         .await
         .unwrap();
     assert_eq!(
@@ -92,7 +92,7 @@ async fn sixteen_messages_compact_all_but_the_newest_four() {
 async fn a_new_day_closes_the_last_and_summarises_it_in_two_layers() {
     let mock = serve(vec![text_reply("Morning!"), notes_call()]);
     let home = tempfile::tempdir().unwrap();
-    let mut store = Store::open(home.path()).unwrap();
+    let store = Store::open(home.path()).unwrap();
     let old = "2020-01-01";
     store.move_to_day(&who(), old).unwrap();
     store
@@ -113,13 +113,9 @@ async fn a_new_day_closes_the_last_and_summarises_it_in_two_layers() {
         .await
         .unwrap();
     assert_eq!(out.0.last().unwrap()["reply"], "Morning!");
-    let ran = run_due(
-        &mut store,
-        Some(&request.providers),
-        &reqwest::Client::new(),
-    )
-    .await
-    .unwrap();
+    let ran = run_due(&store, Some(&request.providers), &reqwest::Client::new())
+        .await
+        .unwrap();
     assert_eq!(
         ran,
         Ran {
@@ -249,12 +245,12 @@ async fn lookup_no_offers_no_tool() {
 #[tokio::test]
 async fn summaries_wait_for_providers() {
     let home = tempfile::tempdir().unwrap();
-    let mut store = Store::open(home.path()).unwrap();
+    let store = Store::open(home.path()).unwrap();
     store
         .add_message(&who(), "2026-10-31", "user", "hi")
         .unwrap();
     store.close_day(&who(), "2026-10-31", "mock/m1").unwrap();
-    let ran = run_due(&mut store, None, &reqwest::Client::new())
+    let ran = run_due(&store, None, &reqwest::Client::new())
         .await
         .unwrap();
     assert_eq!(
@@ -266,7 +262,7 @@ async fn summaries_wait_for_providers() {
         }
     );
     let providers: Providers = serde_json::from_value(json!({})).unwrap();
-    let ran = run_due(&mut store, Some(&providers), &reqwest::Client::new())
+    let ran = run_due(&store, Some(&providers), &reqwest::Client::new())
         .await
         .unwrap();
     assert_eq!(
