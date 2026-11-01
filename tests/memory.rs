@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{serve, sse, Reply};
+use common::{serve, sse, text_reply, Reply};
 use dm::{
     compaction::{COMPACT_AFTER, KEEP_RECENT},
     config::Providers,
@@ -13,12 +13,6 @@ use dm::{
 };
 use serde_json::{json, Value};
 use std::fs;
-
-fn text_reply(text: &str) -> Reply {
-    sse(&[
-        json!({ "choices": [{ "delta": { "content": text } }], "usage": { "prompt_tokens": 3, "completion_tokens": 2 } }),
-    ])
-}
 
 fn notes_call() -> Reply {
     let notes = json!({
@@ -196,29 +190,24 @@ async fn remember_finds_transcripts_and_notes_from_the_files() {
 }
 
 async fn with_lookup(decision: &str) -> (Value, Value) {
-    let mock = serve(vec![text_reply(decision), text_reply("Sure.")]);
-    let home = tempfile::tempdir().unwrap();
-    let store = Store::open(home.path()).unwrap();
-    let mut request = common::request(
-        "openai-completions",
-        &mock.url,
-        "what did I say my sister does?",
-    );
-    request.lookup = Some(dm::request::Lookup {
-        model: Some("mock/m1".into()),
-    });
-    let mut out = Collected::default();
-    dm::respond(&store, &reqwest::Client::new(), &request, &mut out)
-        .await
-        .unwrap();
-    let sent = mock.requests();
+    let (lines, sent, _) = common::answer(
+        |url| {
+            let mut request =
+                common::request("openai-completions", url, "what did I say my sister does?");
+            request.lookup = Some(dm::request::Lookup {
+                model: Some("mock/m1".into()),
+            });
+            request
+        },
+        vec![text_reply(decision), text_reply("Sure.")],
+    )
+    .await;
     assert!(sent[0].body["messages"][1]["content"]
         .as_str()
         .unwrap()
         .contains("what did I say my sister does?"));
     assert!(sent[0].body.get("tools").is_none());
-    let done = out.0.last().unwrap().clone();
-    (sent[1].body.clone(), done)
+    (sent[1].body.clone(), lines.last().unwrap().clone())
 }
 
 #[tokio::test]

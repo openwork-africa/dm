@@ -11,10 +11,8 @@ const CMD_KEY: &str = "fake-cmd-secret-5678";
 
 fn providers_file(dir: &Path, url: &str, api_key: &str) -> std::path::PathBuf {
     let path = dir.join("providers.json");
-    let file = json!({ "providers": { "mock": {
-        "api": "openai-completions", "baseUrl": url, "apiKey": api_key,
-        "models": [{ "id": "m1", "default": true }]
-    } } });
+    let file =
+        json!({ "providers": { "mock": common::provider("openai-completions", url, api_key) } });
     fs::write(&path, file.to_string()).unwrap();
     path
 }

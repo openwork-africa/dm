@@ -32,12 +32,17 @@ pub struct Reply {
     pub body: Vec<u8>,
 }
 
-pub fn sse(events: &[Value]) -> Reply {
-    let body: String = events
+fn sse_with(events: &[Value], named: bool) -> Reply {
+    let mut body: String = events
         .iter()
-        .map(|e| format!("data: {e}\n\n"))
-        .collect::<String>()
-        + "data: [DONE]\n\n";
+        .map(|e| match named {
+            true => format!("event: {}\ndata: {e}\n\n", e["type"].as_str().unwrap_or("")),
+            false => format!("data: {e}\n\n"),
+        })
+        .collect();
+    if !named {
+        body.push_str("data: [DONE]\n\n");
+    }
     Reply {
         status: 200,
         content_type: "text/event-stream",
@@ -45,17 +50,20 @@ pub fn sse(events: &[Value]) -> Reply {
     }
 }
 
+pub fn sse(events: &[Value]) -> Reply {
+    sse_with(events, false)
+}
+
 /// Server-sent events with names, as Anthropic and OpenAI Responses send them.
 pub fn named_sse(events: &[Value]) -> Reply {
-    let body: String = events
-        .iter()
-        .map(|e| format!("event: {}\ndata: {e}\n\n", e["type"].as_str().unwrap_or("")))
-        .collect();
-    Reply {
-        status: 200,
-        content_type: "text/event-stream",
-        body: body.into_bytes(),
-    }
+    sse_with(events, true)
+}
+
+/// A chat-completions reply that says `text` in one piece.
+pub fn text_reply(text: &str) -> Reply {
+    sse(&[
+        json!({ "choices": [{ "delta": { "content": text } }], "usage": { "prompt_tokens": 3, "completion_tokens": 2 } }),
+    ])
 }
 
 pub fn status(code: u16, body: &str) -> Reply {
@@ -152,18 +160,43 @@ fn handle(mut stream: TcpStream, reply: Reply) -> Option<Received> {
     })
 }
 
+/// A provider on the mock with one default model.
+pub fn provider(api: &str, url: &str, key: &str) -> Value {
+    json!({
+        "api": api, "baseUrl": url, "apiKey": key,
+        "models": [{ "id": "m1", "default": true, "cost": { "input": 1.0, "output": 2.0 } }]
+    })
+}
+
 /// A request for one provider on the mock.
 pub fn request(api: &str, url: &str, message: &str) -> dm::Request {
     serde_json::from_value(json!({
-        "providers": { "mock": {
-            "api": api, "baseUrl": url, "apiKey": "fake-literal-key",
-            "models": [{ "id": "m1", "default": true, "cost": { "input": 1.0, "output": 2.0 } }]
-        } },
+        "providers": { "mock": provider(api, url, "fake-literal-key") },
         "person": "thandi",
         "timeZone": "Africa/Johannesburg",
         "message": message,
     }))
     .unwrap()
+}
+
+/// Answers `request` against a mock that sends `replies`: the lines out, what the mock was sent, and the home.
+pub async fn answer(
+    request: impl FnOnce(&str) -> dm::Request,
+    replies: Vec<Reply>,
+) -> (Vec<Value>, Vec<Received>, tempfile::TempDir) {
+    let mock = serve(replies);
+    let home = tempfile::tempdir().unwrap();
+    let store = dm::Store::open(home.path()).unwrap();
+    let mut out = dm::output::Collected::default();
+    dm::respond(
+        &store,
+        &reqwest::Client::new(),
+        &request(&mock.url),
+        &mut out,
+    )
+    .await
+    .unwrap();
+    (out.0, mock.requests(), home)
 }
 
 /// One AWS event stream message, as Bedrock sends it (with zeroed CRCs, which are not checked).

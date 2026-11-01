@@ -12,19 +12,12 @@ use dm::{
 use serde_json::{json, Value};
 
 async fn ask(api: &str, replies: Vec<Reply>) -> (Vec<Value>, Vec<common::Received>) {
-    let mock = serve(replies);
-    let home = tempfile::tempdir().unwrap();
-    let store = Store::open(home.path()).unwrap();
-    let mut out = Collected::default();
-    dm::respond(
-        &store,
-        &reqwest::Client::new(),
-        &common::request(api, &mock.url, "what is my sister called?"),
-        &mut out,
+    let (lines, sent, _) = common::answer(
+        |url| common::request(api, url, "what is my sister called?"),
+        replies,
     )
-    .await
-    .unwrap();
-    (out.0, mock.requests())
+    .await;
+    (lines, sent)
 }
 
 fn kinds(lines: &[Value]) -> Vec<&str> {
