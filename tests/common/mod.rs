@@ -165,3 +165,24 @@ pub fn request(api: &str, url: &str, message: &str) -> dm::Request {
     }))
     .unwrap()
 }
+
+/// One AWS event stream message, as Bedrock sends it (with zeroed CRCs, which are not checked).
+pub fn aws_event(headers: &[(&str, &str)], payload: &str) -> Vec<u8> {
+    let mut encoded = vec![];
+    for (name, value) in headers {
+        encoded.push(name.len() as u8);
+        encoded.extend_from_slice(name.as_bytes());
+        encoded.push(7);
+        encoded.extend_from_slice(&(value.len() as u16).to_be_bytes());
+        encoded.extend_from_slice(value.as_bytes());
+    }
+    let total = 12 + encoded.len() + payload.len() + 4;
+    let mut message = vec![];
+    message.extend_from_slice(&(total as u32).to_be_bytes());
+    message.extend_from_slice(&(encoded.len() as u32).to_be_bytes());
+    message.extend_from_slice(&[0; 4]);
+    message.extend_from_slice(&encoded);
+    message.extend_from_slice(payload.as_bytes());
+    message.extend_from_slice(&[0; 4]);
+    message
+}

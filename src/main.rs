@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use dm::{
     config::Providers,
     day, jobs,
-    output::{sink_for, Format},
+    output::{JsonLines, PlainText, Sink},
     request::{read_providers, Request, DEFAULT_AGENT},
     who::Who,
     Store,
@@ -13,6 +13,22 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Format {
+    #[value(name = "stream-json")]
+    StreamJson,
+    #[value(name = "text")]
+    Text,
+}
+
+fn sink_for(format: Format) -> Box<dyn Sink> {
+    let stdout = std::io::stdout();
+    match format {
+        Format::StreamJson => Box::new(JsonLines(stdout)),
+        Format::Text => Box::new(PlainText(stdout)),
+    }
+}
 
 /// Answers a direct message straight away, keeps transcripts, summarises them, and lets the model recall them.
 #[derive(Parser)]

@@ -1,6 +1,6 @@
 //! Keys and header values: `$NAME` is an environment variable, `!command` the trimmed output of a shell command, and
-//! anything else is used as written. They are resolved only when a call is made, and never printed: a `Secret` shows as
-//! `***` and errors name where the value was looked for, never the value.
+//! anything else is used as written. They are resolved once per answer, when its model is set up, and never printed: a
+//! `Secret` shows as `***` and errors name where the value was looked for, never the value.
 
 use anyhow::{anyhow, bail, Result};
 use std::{fmt, process::Command};

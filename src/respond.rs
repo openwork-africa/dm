@@ -50,14 +50,14 @@ fn models(request: &Request, http: &reqwest::Client) -> Result<(Model, Option<Mo
     let model = Model::new(
         http.clone(),
         request.providers.target(request.model.as_deref())?,
-    );
+    )?;
     let decider = match &request.lookup {
         Some(lookup) => Some(Model::new(
             http.clone(),
             request
                 .providers
                 .target(lookup.model.as_deref().or(request.model.as_deref()))?,
-        )),
+        )?),
         None => None,
     };
     Ok((model, decider))

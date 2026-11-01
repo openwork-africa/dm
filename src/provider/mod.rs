@@ -12,7 +12,7 @@ mod openai_responses;
 
 use crate::{
     config::{ApiStyle, Cost, ModelEntry, Provider, Target},
-    secret,
+    secret::{self, Secret},
 };
 use anyhow::{anyhow, bail, Result};
 use chat::{Chat, Event, Turn, TurnBuilder, Usage};
@@ -65,12 +65,34 @@ pub struct Model {
     target: Target,
     api: Box<dyn Api>,
     http: reqwest::Client,
+    key: Option<Secret>,
+    headers: Vec<(String, Secret)>,
 }
 
 impl Model {
-    pub fn new(http: reqwest::Client, target: Target) -> Self {
+    /// Resolves the key and headers once, so a missing one fails before anything is stored.
+    pub fn new(http: reqwest::Client, target: Target) -> Result<Self> {
         let api = api_for(target.provider.api);
-        Self { target, api, http }
+        let key = target
+            .provider
+            .api_key
+            .as_deref()
+            .map(secret::resolve)
+            .transpose()?;
+        let headers = target
+            .provider
+            .headers
+            .iter()
+            .chain(&target.model.headers)
+            .map(|(name, raw)| Ok((name.clone(), secret::resolve(raw)?)))
+            .collect::<Result<_>>()?;
+        Ok(Self {
+            target,
+            api,
+            http,
+            key,
+            headers,
+        })
     }
 
     pub fn label(&self) -> String {
@@ -89,15 +111,14 @@ impl Model {
         for (name, value) in self.api.fixed_headers() {
             request = request.header(*name, *value);
         }
-        if let Some(raw) = &provider.api_key {
-            let key = secret::resolve(raw)?;
+        if let Some(key) = &self.key {
             request = match (provider.auth_header, self.api.key_header()) {
                 (false, KeyHeader::Named(name)) => request.header(name, key.expose()),
                 _ => request.bearer_auth(key.expose()),
             };
         }
-        for (name, raw) in provider.headers.iter().chain(&model.headers) {
-            request = request.header(name, secret::resolve(raw)?.expose());
+        for (name, value) in &self.headers {
+            request = request.header(name, value.expose());
         }
         let response = request.send().await.map_err(|err| {
             anyhow!(

@@ -3,8 +3,12 @@
 
 mod common;
 
-use common::{named_sse, serve, sse, Reply};
-use dm::{output::Collected, provider::framing::aws_event, Store};
+use common::{aws_event, named_sse, serve, sse, Reply};
+use dm::{
+    output::Collected,
+    provider::framing::{Frame, Framing},
+    Store,
+};
 use serde_json::{json, Value};
 
 async fn ask(api: &str, replies: Vec<Reply>) -> (Vec<Value>, Vec<common::Received>) {
@@ -310,5 +314,40 @@ async fn rows_left_by_a_failed_answer_are_merged_so_roles_alternate() {
     assert_eq!(
         messages[0]["content"][0]["text"],
         "are you there?\n\nhello?"
+    );
+}
+
+#[test]
+fn aws_event_stream_messages_are_read_across_chunks() {
+    let mut bytes = aws_event(
+        &[
+            (":event-type", "contentBlockDelta"),
+            (":message-type", "event"),
+        ],
+        "{\"a\":1}",
+    );
+    bytes.extend(aws_event(
+        &[
+            (":message-type", "exception"),
+            (":exception-type", "throttlingException"),
+        ],
+        "{}",
+    ));
+    let mut decoder = Framing::AwsEventStream.decoder();
+    let mut frames = vec![];
+    for chunk in bytes.chunks(7) {
+        frames.extend(decoder.push(chunk).unwrap());
+    }
+    assert!(decoder.finish().unwrap().is_empty());
+    assert_eq!(
+        frames[0],
+        Frame {
+            name: Some("contentBlockDelta".into()),
+            data: "{\"a\":1}".into()
+        }
+    );
+    assert_eq!(
+        frames[1].name.as_deref(),
+        Some("exception:throttlingException")
     );
 }

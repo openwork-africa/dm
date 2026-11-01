@@ -392,8 +392,8 @@ async fn notes_are_written_through_a_part_file_and_renamed() {
 
     fs::remove_dir(notes.join("thandi.md.part")).unwrap();
     store.enqueue(&summary).unwrap();
-    store
-        .conn
+    rusqlite::Connection::open(home.path().join("dm.db"))
+        .unwrap()
         .execute("UPDATE jobs SET run_after = 0", [])
         .unwrap();
     let ran = run_due(&store, Some(&request.providers), &http)

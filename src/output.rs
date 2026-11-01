@@ -5,14 +5,6 @@ use serde::Serialize;
 use serde_json::Value;
 use std::io::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum Format {
-    #[value(name = "stream-json")]
-    StreamJson,
-    #[value(name = "text")]
-    Text,
-}
-
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Line<'a> {
@@ -72,13 +64,5 @@ pub struct Collected(pub Vec<Value>);
 impl Sink for Collected {
     fn line(&mut self, line: &Line) {
         self.0.push(serde_json::to_value(line).unwrap_or_default());
-    }
-}
-
-pub fn sink_for(format: Format) -> Box<dyn Sink> {
-    let stdout = std::io::stdout();
-    match format {
-        Format::StreamJson => Box::new(JsonLines(stdout)),
-        Format::Text => Box::new(PlainText(stdout)),
     }
 }

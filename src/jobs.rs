@@ -79,7 +79,7 @@ impl Job {
                     return Ok(Outcome::Waiting);
                 };
                 let who = Who::new(agent, Some(person))?;
-                let model = Model::new(http.clone(), providers.target(Some(model))?);
+                let model = Model::new(http.clone(), providers.target(Some(model))?)?;
                 summary::update(store, &model, &who, day).await?;
             }
         }

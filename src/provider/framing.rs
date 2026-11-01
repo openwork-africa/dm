@@ -182,28 +182,6 @@ impl Decoder for AwsEventStream {
     }
 }
 
-/// One AWS event stream message, as Bedrock sends it (with zeroed CRCs, which are not checked): for tests.
-#[doc(hidden)]
-pub fn aws_event(headers: &[(&str, &str)], payload: &str) -> Vec<u8> {
-    let mut encoded = vec![];
-    for (name, value) in headers {
-        encoded.push(name.len() as u8);
-        encoded.extend_from_slice(name.as_bytes());
-        encoded.push(7);
-        encoded.extend_from_slice(&(value.len() as u16).to_be_bytes());
-        encoded.extend_from_slice(value.as_bytes());
-    }
-    let total = PRELUDE + encoded.len() + payload.len() + 4;
-    let mut message = vec![];
-    message.extend_from_slice(&(total as u32).to_be_bytes());
-    message.extend_from_slice(&(encoded.len() as u32).to_be_bytes());
-    message.extend_from_slice(&[0; 4]);
-    message.extend_from_slice(&encoded);
-    message.extend_from_slice(payload.as_bytes());
-    message.extend_from_slice(&[0; 4]);
-    message
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,40 +212,5 @@ mod tests {
                 ]
             );
         }
-    }
-
-    #[test]
-    fn aws_event_stream_messages_are_read_across_chunks() {
-        let mut bytes = aws_event(
-            &[
-                (":event-type", "contentBlockDelta"),
-                (":message-type", "event"),
-            ],
-            "{\"a\":1}",
-        );
-        bytes.extend(aws_event(
-            &[
-                (":message-type", "exception"),
-                (":exception-type", "throttlingException"),
-            ],
-            "{}",
-        ));
-        let mut decoder = Framing::AwsEventStream.decoder();
-        let mut frames = vec![];
-        for chunk in bytes.chunks(7) {
-            frames.extend(decoder.push(chunk).unwrap());
-        }
-        assert!(decoder.finish().unwrap().is_empty());
-        assert_eq!(
-            frames[0],
-            Frame {
-                name: Some("contentBlockDelta".into()),
-                data: "{\"a\":1}".into()
-            }
-        );
-        assert_eq!(
-            frames[1].name.as_deref(),
-            Some("exception:throttlingException")
-        );
     }
 }

@@ -75,7 +75,7 @@ pub struct Provider {
     /// Required by every style but `bedrock`, which builds it from `region` when it is left out.
     #[serde(default)]
     pub base_url: Option<String>,
-    /// `$NAME`, `!command` or a literal; resolved when a call is made (secret.rs).
+    /// `$NAME`, `!command` or a literal; resolved once per answer, when its model is set up (secret.rs).
     #[serde(default)]
     pub api_key: Option<String>,
     /// Values may be `$NAME` or `!command` too.

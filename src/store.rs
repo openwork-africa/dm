@@ -66,7 +66,7 @@ const SCHEMA: &str = "
 ";
 
 pub struct Store {
-    pub conn: Connection,
+    pub(crate) conn: Connection,
     root: PathBuf,
 }
 

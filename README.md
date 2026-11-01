@@ -91,8 +91,8 @@ Each provider names its API style in `api`, and lists its models:
 A `name` on a provider or model and a model's `contextWindow` (which msg's `models.json` carries) are accepted and ignored.
 
 `cost` is US dollars per million tokens, `{ "input", "output", "cacheRead", "cacheWrite", "tiers": [{ "inputTokensAbove",
-... }] }`; a call whose input is above a tier's threshold is priced at that tier. Keys are resolved only when a call is
-made and are never printed or logged: errors name the variable or command, never the value.
+... }] }`; a call whose input is above a tier's threshold is priced at that tier. Keys are resolved once for each
+answer, when its model is set up, and are never printed or logged: errors name the variable or command, never the value.
 
 | style | sends to | key |
 | --- | --- | --- |
