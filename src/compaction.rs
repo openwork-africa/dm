@@ -56,12 +56,7 @@ impl Store {
             self.index_transcript(who, day, &text)?;
         }
         if close {
-            self.enqueue(&Job::Summary {
-                agent: who.agent.clone(),
-                person: who.person.clone(),
-                day: day.into(),
-                model: model.into(),
-            })?;
+            self.enqueue(&Job::summary(who, day, model))?;
         }
         Ok(())
     }

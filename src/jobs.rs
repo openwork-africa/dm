@@ -38,6 +38,53 @@ impl Job {
             model: model.into(),
         }
     }
+
+    pub fn summary(who: &Who, day: &str, model: &str) -> Self {
+        Job::Summary {
+            agent: who.agent.clone(),
+            person: who.person.clone(),
+            day: day.into(),
+            model: model.into(),
+        }
+    }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Job::Compact { .. } => "compact",
+            Job::Summary { .. } => "summary",
+        }
+    }
+
+    async fn run(
+        &self,
+        store: &Store,
+        providers: Option<&Providers>,
+        http: &reqwest::Client,
+    ) -> Result<Outcome> {
+        match self {
+            Job::Compact {
+                agent,
+                person,
+                day,
+                close,
+                model,
+            } => store.compact(&Who::new(agent, Some(person))?, day, *close, model)?,
+            Job::Summary {
+                agent,
+                person,
+                day,
+                model,
+            } => {
+                let Some(providers) = providers else {
+                    return Ok(Outcome::Waiting);
+                };
+                let who = Who::new(agent, Some(person))?;
+                let model = Model::new(http.clone(), providers.target(Some(model))?);
+                summary::update(store, &model, &who, day).await?;
+            }
+        }
+        Ok(Outcome::Done)
+    }
 }
 
 fn now_ms() -> i64 {
@@ -45,6 +92,13 @@ fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// What running a job came to.
+pub enum Outcome {
+    Done,
+    /// A summary without providers: left for a run that has them.
+    Waiting,
 }
 
 const MAX_ATTEMPTS: i64 = 5;
@@ -90,6 +144,15 @@ impl Store {
         )? == 1)
     }
 
+    /// Gives a claimed job back, due now.
+    fn release(&self, id: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE jobs SET run_after = ?2 WHERE id = ?1",
+            params![id, now_ms()],
+        )?;
+        Ok(())
+    }
+
     fn finish(&self, id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM jobs WHERE id = ?1", [id])?;
         Ok(())
@@ -128,55 +191,26 @@ pub async fn run_due(
     let mut last = 0;
     while let Some((id, text, attempts)) = store.next_due(last)? {
         last = id;
-        let job: Job = match serde_json::from_str(&text) {
-            Ok(job) => job,
-            Err(_) => {
-                store.finish(id)?;
-                continue;
-            }
-        };
-        if matches!(job, Job::Summary { .. }) && providers.is_none() {
-            ran.waiting += 1;
+        let Ok(job) = serde_json::from_str::<Job>(&text) else {
+            store.finish(id)?;
             continue;
-        }
+        };
         if !store.claim(id)? {
             continue;
         }
-        let result = match &job {
-            Job::Compact {
-                agent,
-                person,
-                day,
-                close,
-                model,
-            } => Who::new(agent, Some(person))
-                .and_then(|who| store.compact(&who, day, *close, model)),
-            Job::Summary {
-                agent,
-                person,
-                day,
-                model,
-            } => {
-                let Some(providers) = providers else {
-                    continue; // waiting, counted above
-                };
-                match (Who::new(agent, Some(person)), providers.target(Some(model))) {
-                    (Ok(who), Ok(target)) => {
-                        summary::update(store, &Model::new(http.clone(), target), &who, day).await
-                    }
-                    (Err(err), _) | (_, Err(err)) => Err(err),
-                }
-            }
-        };
-        match result {
-            Ok(()) => {
+        match job.run(store, providers, http).await {
+            Ok(Outcome::Done) => {
                 store.finish(id)?;
                 ran.done += 1;
+            }
+            Ok(Outcome::Waiting) => {
+                store.release(id)?;
+                ran.waiting += 1;
             }
             Err(err) => {
                 eprintln!(
                     "dm: a {} job failed (attempt {}): {err:#}",
-                    kind(&job),
+                    job.kind(),
                     attempts + 1
                 );
                 store.retry_later(id, attempts)?;
@@ -185,11 +219,4 @@ pub async fn run_due(
         }
     }
     Ok(ran)
-}
-
-fn kind(job: &Job) -> &'static str {
-    match job {
-        Job::Compact { .. } => "compact",
-        Job::Summary { .. } => "summary",
-    }
 }
