@@ -259,3 +259,56 @@ async fn bedrock_converse_stream() {
         "b1"
     );
 }
+
+#[tokio::test]
+async fn rows_left_by_a_failed_answer_are_merged_so_roles_alternate() {
+    let answer = bedrock_stream(&[
+        (
+            "contentBlockDelta",
+            json!({ "contentBlockIndex": 0, "delta": { "text": "Back again." } }),
+        ),
+        ("messageStop", json!({ "stopReason": "end_turn" })),
+        (
+            "metadata",
+            json!({ "usage": { "inputTokens": 1, "outputTokens": 1 } }),
+        ),
+    ]);
+    let mock = serve(vec![common::status(500, "{\"message\":\"down\"}"), answer]);
+    let home = tempfile::tempdir().unwrap();
+    let store = Store::open(home.path()).unwrap();
+    let http = reqwest::Client::new();
+    let mut out = Collected::default();
+
+    let failed = dm::respond(
+        &store,
+        &http,
+        &common::request("bedrock", &mock.url, "are you there?"),
+        &mut out,
+    )
+    .await;
+    assert!(failed.is_err(), "the first answer fails");
+    dm::respond(
+        &store,
+        &http,
+        &common::request("bedrock", &mock.url, "hello?"),
+        &mut out,
+    )
+    .await
+    .unwrap();
+
+    let sent = mock.requests();
+    let messages = sent[1].body["messages"].as_array().unwrap();
+    let roles: Vec<&str> = messages
+        .iter()
+        .map(|m| m["role"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        roles,
+        vec!["user"],
+        "Bedrock rejects two user messages in a row"
+    );
+    assert_eq!(
+        messages[0]["content"][0]["text"],
+        "are you there?\n\nhello?"
+    );
+}

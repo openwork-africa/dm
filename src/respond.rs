@@ -4,7 +4,7 @@
 use crate::{
     answer::{answer, Tool},
     day, lookup,
-    messages::{ASSISTANT, USER},
+    messages::{StoredMessage, ASSISTANT, USER},
     output::{Line, Sink},
     prompt::Prompt,
     provider::{
@@ -97,19 +97,7 @@ pub async fn respond(
         look_up: look_up == Some(true),
     }
     .render();
-    let messages = history
-        .into_iter()
-        .map(|m| {
-            if m.role == USER {
-                Message::User(m.content)
-            } else {
-                Message::Assistant(Reply {
-                    text: m.content,
-                    ..Reply::default()
-                })
-            }
-        })
-        .collect();
+    let messages = messages_of(history);
     let tools = if offered {
         vec![Tool {
             spec: remember::tool(),
@@ -154,4 +142,28 @@ pub async fn respond(
         cost_usd: answered.cost_usd,
     });
     Ok(answered)
+}
+
+/// The history as the model is sent it. A failed or empty answer leaves two user rows in a row, and some hosts reject
+/// roles that do not alternate, so rows of one role are joined.
+fn messages_of(history: Vec<StoredMessage>) -> Vec<Message> {
+    let mut messages: Vec<Message> = vec![];
+    for m in history {
+        match (m.role == USER, messages.last_mut()) {
+            (true, Some(Message::User(said))) => {
+                said.push_str("\n\n");
+                said.push_str(&m.content);
+            }
+            (false, Some(Message::Assistant(reply))) => {
+                reply.text.push_str("\n\n");
+                reply.text.push_str(&m.content);
+            }
+            (true, _) => messages.push(Message::User(m.content)),
+            (false, _) => messages.push(Message::Assistant(Reply {
+                text: m.content,
+                ..Reply::default()
+            })),
+        }
+    }
+    messages
 }
