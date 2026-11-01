@@ -344,3 +344,10 @@ fn aws_event_stream_messages_are_read_across_chunks() {
         Some("exception:throttlingException")
     );
 }
+
+#[test]
+fn a_corrupt_event_stream_prelude_is_an_error_not_a_wait() {
+    let mut prelude = (u32::MAX).to_be_bytes().to_vec();
+    prelude.extend_from_slice(&[0; 8]);
+    assert!(Framing::AwsEventStream.decoder().push(&prelude).is_err());
+}

@@ -92,6 +92,8 @@ struct AwsEventStream {
 }
 
 const PRELUDE: usize = 12;
+/// The longest message dm will wait for; a longer one is a corrupt prelude.
+const MAX_MESSAGE: usize = 16 * 1024 * 1024;
 
 fn be_u32(bytes: &[u8]) -> usize {
     u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize
@@ -144,7 +146,7 @@ impl Decoder for AwsEventStream {
         while self.buffer.len() >= PRELUDE {
             let total = be_u32(&self.buffer[0..4]);
             let headers_len = be_u32(&self.buffer[4..8]);
-            if total < PRELUDE + headers_len + 4 {
+            if total < PRELUDE + headers_len + 4 || total > MAX_MESSAGE {
                 bail!("a malformed event stream message");
             }
             if self.buffer.len() < total {
