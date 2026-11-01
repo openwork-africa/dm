@@ -48,6 +48,8 @@ impl Job {
 
 const MAX_ATTEMPTS: i64 = 5;
 const RETRY_MS: i64 = 30_000;
+/// How long a job that is running is hidden from other runs; a crashed run's job is due again after it.
+const LEASE_MS: i64 = 600_000;
 
 /// What a run of the queue did.
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
@@ -76,6 +78,15 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?)
+    }
+
+    /// Takes a due job for this run: false when another run took it first.
+    fn claim(&self, id: i64) -> Result<bool> {
+        let now = now_ms();
+        Ok(self.conn.execute(
+            "UPDATE jobs SET run_after = ?2 WHERE id = ?1 AND run_after <= ?3",
+            params![id, now + LEASE_MS, now],
+        )? == 1)
     }
 
     fn finish(&self, id: i64) -> Result<()> {
@@ -123,6 +134,13 @@ pub async fn run_due(
                 continue;
             }
         };
+        if matches!(job, Job::Summary { .. }) && providers.is_none() {
+            ran.waiting += 1;
+            continue;
+        }
+        if !store.claim(id)? {
+            continue;
+        }
         let result = match &job {
             Job::Compact {
                 agent,
@@ -139,8 +157,7 @@ pub async fn run_due(
                 model,
             } => {
                 let Some(providers) = providers else {
-                    ran.waiting += 1;
-                    continue;
+                    continue; // waiting, counted above
                 };
                 match (Who::new(agent, Some(person)), providers.target(Some(model))) {
                     (Ok(who), Ok(target)) => {

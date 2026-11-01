@@ -297,3 +297,36 @@ fn two_processes_at_a_day_change_give_one_close() {
         assert_eq!(closed, 1, "{day} was closed {closed} times");
     }
 }
+
+#[tokio::test]
+async fn a_claimed_job_is_not_run_twice() {
+    let mock = serve(vec![notes_call(), notes_call()]);
+    let home = tempfile::tempdir().unwrap();
+    let (first, second) = (
+        Store::open(home.path()).unwrap(),
+        Store::open(home.path()).unwrap(),
+    );
+    let dir = home.path().join("transcripts/default/thandi");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("2026-10-31-1.md"),
+        "# 2026-10-31\n\nPerson: I love jazz\n",
+    )
+    .unwrap();
+    first
+        .enqueue(&Job::Summary {
+            agent: "default".into(),
+            person: "thandi".into(),
+            day: "2026-10-31".into(),
+            model: "mock/m1".into(),
+        })
+        .unwrap();
+    let request = common::request("openai-completions", &mock.url, "unused");
+    let http = reqwest::Client::new();
+    let (a, b) = tokio::join!(
+        run_due(&first, Some(&request.providers), &http),
+        run_due(&second, Some(&request.providers), &http)
+    );
+    assert_eq!(a.unwrap().done + b.unwrap().done, 1);
+    assert_eq!(mock.requests().len(), 1, "the model was asked once");
+}
