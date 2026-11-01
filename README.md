@@ -41,7 +41,7 @@ dm --request request.json -p        # the reply alone, as plain text
 | `--model <provider>/<model-id>` | Else the request's `model`, else the model marked `default`. |
 | `--agent`, `--person`, `--time-zone`, `--system`, `--system-file` | Set the request's fields of the same name. |
 | `--providers <file>` | The providers, when the request has none; else `<home>/providers.json`. |
-| `--home <dir>` | Where dm keeps its data: `$DM_HOME`, else `~/.dm`. |
+| `--home <dir>` | Where dm keeps its data: `$DM_HOME`, else `~/.dm` (from the OS when `HOME` is not set). |
 | `--no-jobs` | Leave compaction and summaries for `dm jobs`. |
 
 A flag wins over the request's own field. The working directory is never written to; everything stays in the home.
@@ -81,7 +81,7 @@ Each provider names its API style in `api`, and lists its models:
 | --- | --- |
 | `api` | `anthropic-messages`, `openai-completions`, `openai-responses`, `bedrock` or `azure-foundry` |
 | `baseUrl` | The API's base address (optional for `bedrock`, which builds it from `region`) |
-| `apiKey` | `"$NAME"`: the environment variable; `"!command"`: the command's trimmed output; anything else as written |
+| `apiKey` | `"$NAME"`: the environment variable; `"!command"`: the command's trimmed output (`~`, `$HOME` and `$DM_HOME` work in it, also when dm was started without `HOME`); anything else as written |
 | `headers` | Extra headers; values resolve like `apiKey` |
 | `authHeader` | `true` sends the key as `Authorization: Bearer` whatever the style's own header |
 | `region` | `bedrock`: the AWS region |
@@ -106,7 +106,13 @@ Every style streams and supports tool calls. `thinking: true` turns on adaptive 
 encrypted reasoning for Responses; thinking blocks and reasoning items are sent back unchanged with their turn.
 `reasoningEffort` becomes `output_config.effort` (Anthropic, Bedrock), `reasoning.effort` (Responses) or
 `reasoning_effort` (chat completions). dm never forces a tool call, since current models reject a forced
-`tool_choice`; the prompt asks for it instead.
+`tool_choice`; the prompt asks for it instead. An empty system prompt is not sent at all.
+
+Reasoning a model writes into its text inside `<think>` … `</think>` is kept out of the reply in every style: it is
+not streamed as `text`, and is left out of `done.reply`, the stored message, transcripts and notes. Tags may be split
+across streamed pieces. A `</think>` with no opening tag means everything before it in that call was reasoning; that
+part is taken out of the reply, but what of it had already been streamed as `text` cannot be taken back. An unclosed
+`<think>` is reasoning to the end. None of the styles can send unsigned reasoning back, so it is dropped.
 
 Bedrock is signed with a Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`) as a bearer token. **AWS SigV4 signing (IAM
 access keys) is not supported yet.**

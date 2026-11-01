@@ -69,8 +69,8 @@ impl Api for Bedrock {
 
     fn body(&self, model: &ModelEntry, chat: &Chat) -> Value {
         let mut body = json!({ "messages": messages(chat) });
-        if !chat.system.is_empty() {
-            body["system"] = json!([text_block(&chat.system)]);
+        if let Some(system) = chat.system() {
+            body["system"] = json!([text_block(system)]);
         }
         if !chat.tools.is_empty() {
             let tools: Vec<Value> = chat

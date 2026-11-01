@@ -1,6 +1,7 @@
-//! Keys and header values: `$NAME` is an environment variable, `!command` the trimmed output of a shell command, and
-//! anything else is used as written. They are resolved once per answer, when its model is set up, and never printed: a
-//! `Secret` shows as `***` and errors name where the value was looked for, never the value.
+//! Keys and header values: `$NAME` is an environment variable, `!command` the trimmed output of a shell command (run
+//! with `HOME` set, so `~` and `$HOME` work when dm was started without it), and anything else is used as written.
+//! They are resolved once per answer, when its model is set up, and never printed: a `Secret` shows as `***` and errors
+//! name where the value was looked for, never the value.
 
 use anyhow::{anyhow, bail, Result};
 use std::{fmt, process::Command};
@@ -32,9 +33,12 @@ pub fn resolve(raw: &str) -> Result<Secret> {
 }
 
 fn run(command: &str) -> Result<String> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
+    let mut shell = Command::new("sh");
+    shell.arg("-c").arg(command);
+    if let Some(home) = crate::home::user() {
+        shell.env("HOME", home);
+    }
+    let output = shell
         .output()
         .map_err(|err| anyhow!("could not run the key command `{command}`: {err}"))?;
     if !output.status.success() {

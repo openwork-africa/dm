@@ -185,3 +185,48 @@ fn version_and_jobs() {
         "{\"done\":0,\"failed\":0,\"waiting\":0}"
     );
 }
+
+#[test]
+fn key_commands_find_the_home_without_home_set() {
+    let mock = serve(vec![answer()]);
+    let home = tempfile::tempdir().unwrap();
+    fs::write(home.path().join("key"), format!("{CMD_KEY}\n")).unwrap();
+    let path = home.path().join("providers.json");
+    let mut provider = common::provider("openai-completions", &mock.url, "!cat \"$DM_HOME/key\"");
+    provider["headers"] = json!({ "x-home": "!printf %s ~", "x-home-env": "!printf %s \"$HOME\"" });
+    fs::write(
+        &path,
+        json!({ "providers": { "mock": provider } }).to_string(),
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_dm"))
+        .args([
+            "--home",
+            home.path().to_str().unwrap(),
+            "-p",
+            "hi",
+            "--json",
+        ])
+        .env_remove("HOME")
+        .env_remove("DM_HOME")
+        .env("TZ", "Africa/Johannesburg")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let sent = &mock.requests()[0];
+    assert_eq!(
+        sent.header("authorization"),
+        Some(format!("Bearer {CMD_KEY}").as_str())
+    );
+    let tilde = sent.header("x-home").unwrap();
+    assert!(
+        tilde.starts_with('/') && Path::new(tilde).is_dir(),
+        "{tilde}"
+    );
+    assert_eq!(sent.header("x-home-env"), Some(tilde));
+    assert!(!String::from_utf8_lossy(&out.stdout).contains(CMD_KEY));
+}

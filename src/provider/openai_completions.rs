@@ -13,7 +13,11 @@ use serde_json::{json, Value};
 pub struct OpenAiCompletions;
 
 fn messages(chat: &Chat) -> Vec<Value> {
-    let mut all = vec![json!({ "role": "system", "content": chat.system })];
+    let mut all: Vec<Value> = chat
+        .system()
+        .map(|system| json!({ "role": "system", "content": system }))
+        .into_iter()
+        .collect();
     for message in &chat.messages {
         match message {
             Message::User(text) => all.push(json!({ "role": "user", "content": text })),

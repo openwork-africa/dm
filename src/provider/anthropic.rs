@@ -56,10 +56,12 @@ impl Api for AnthropicMessages {
         let mut body = json!({
             "model": model.id,
             "max_tokens": model.max_tokens.unwrap_or(MAX_TOKENS),
-            "system": chat.system,
             "messages": messages(chat),
             "stream": true,
         });
+        if let Some(system) = chat.system() {
+            body["system"] = json!(system);
+        }
         if !chat.tools.is_empty() {
             body["tools"] = chat
                 .tools

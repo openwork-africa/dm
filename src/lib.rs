@@ -5,6 +5,7 @@ mod answer;
 pub mod compaction;
 pub mod config;
 pub mod day;
+pub mod home;
 pub mod jobs;
 mod lookup;
 mod messages;

@@ -9,6 +9,7 @@ pub mod chat;
 pub mod framing;
 mod openai_completions;
 mod openai_responses;
+mod think;
 
 use crate::{
     config::{ApiStyle, Cost, ModelEntry, Provider, Target},
@@ -158,7 +159,7 @@ impl Model {
             apply(decoder.push(&bytes)?, &mut builder)?;
         }
         apply(decoder.finish()?, &mut builder)?;
-        Ok(builder.finish())
+        Ok(builder.finish(on_text))
     }
 }
 

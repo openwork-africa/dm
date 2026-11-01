@@ -351,3 +351,106 @@ fn a_corrupt_event_stream_prelude_is_an_error_not_a_wait() {
     prelude.extend_from_slice(&[0; 8]);
     assert!(Framing::AwsEventStream.decoder().push(&prelude).is_err());
 }
+
+#[tokio::test]
+async fn an_empty_system_is_not_sent() {
+    for api in [
+        "openai-completions",
+        "openai-responses",
+        "anthropic-messages",
+        "bedrock",
+    ] {
+        let mock = serve(vec![common::status(200, ""), common::status(200, "")]);
+        let providers: dm::config::Providers =
+            serde_json::from_value(json!({ "mock": common::provider(api, &mock.url, "fake-key") }))
+                .unwrap();
+        let model =
+            dm::provider::Model::new(reqwest::Client::new(), providers.target(None).unwrap())
+                .unwrap();
+        for system in ["", " \n "] {
+            let chat = dm::provider::chat::Chat {
+                system: system.to_string(),
+                messages: vec![dm::provider::chat::Message::User("hi".into())],
+                tools: vec![],
+            };
+            model.ask(&chat, &mut |_| {}).await.unwrap();
+        }
+        for sent in mock.requests() {
+            let body = &sent.body;
+            assert!(body.get("system").is_none(), "{api}: {body}");
+            assert!(body.get("instructions").is_none(), "{api}: {body}");
+            let turns = body["messages"].as_array().or(body["input"].as_array());
+            assert!(
+                turns.unwrap().iter().all(|m| m["role"] != "system"),
+                "{api}: {body}"
+            );
+        }
+    }
+}
+
+/// The text lines, the done line's reply and the stored messages of one answer.
+async fn said(api: &str, reply: Reply) -> (String, Value, Vec<String>) {
+    let (lines, _, home) = common::answer(
+        |url| common::request(api, url, "what is my sister called?"),
+        vec![reply],
+    )
+    .await;
+    let texts = lines
+        .iter()
+        .filter(|l| l["type"] == "text")
+        .map(|l| l["delta"].as_str().unwrap())
+        .collect();
+    let store = Store::open(home.path()).unwrap();
+    let who = dm::who::Who::new("default", Some("thandi")).unwrap();
+    let day = store.last_day(&who).unwrap().unwrap();
+    let stored = store
+        .messages(&who, &day, true)
+        .unwrap()
+        .into_iter()
+        .map(|m| m.content)
+        .collect();
+    (texts, lines.last().unwrap()["reply"].clone(), stored)
+}
+
+#[tokio::test]
+async fn reasoning_in_think_tags_is_not_the_reply() {
+    let piece = |text: &str| json!({ "choices": [{ "delta": { "content": text } }] });
+    let (texts, reply, stored) = said(
+        "openai-completions",
+        sse(&[
+            piece("<thi"),
+            piece("nk>She is ca"),
+            piece("lled Lindi</th"),
+            piece("ink>\n\nHer name "),
+            piece("is Lindi."),
+        ]),
+    )
+    .await;
+    assert_eq!(texts, "Her name is Lindi.");
+    assert_eq!(reply, "Her name is Lindi.");
+    assert_eq!(
+        stored,
+        vec!["what is my sister called?", "Her name is Lindi."]
+    );
+}
+
+#[tokio::test]
+async fn a_closing_tag_alone_takes_what_came_before_out_of_the_reply() {
+    let piece = |text: &str| {
+        (
+            "contentBlockDelta",
+            json!({ "contentBlockIndex": 0, "delta": { "text": text } }),
+        )
+    };
+    let (_, reply, stored) = said(
+        "bedrock",
+        bedrock_stream(&[
+            piece("They asked about Lindi.</thi"),
+            piece("nk>\n Her name is Lindi."),
+            ("messageStop", json!({ "stopReason": "end_turn" })),
+        ]),
+    )
+    .await;
+    assert_eq!(reply, "Her name is Lindi.");
+    assert_eq!(stored[1], "Her name is Lindi.");
+}

@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
 use dm::{
     config::Providers,
-    day, jobs,
+    day, home, jobs,
     output::{JsonLines, PlainText, Sink},
     request::{read_providers, Request, DEFAULT_AGENT},
     who::Who,
@@ -35,7 +35,7 @@ fn sink_for(format: Format) -> Box<dyn Sink> {
 #[command(name = "dm", version, args_conflicts_with_subcommands = true)]
 struct Cli {
     /// Where dm keeps its data [default: $DM_HOME, else ~/.dm]
-    #[arg(long, global = true)]
+    #[arg(long, global = true, value_parser = path)]
     home: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
@@ -49,7 +49,7 @@ struct Ask {
     #[arg(short = 'p', long = "print", num_args = 0..=1, value_name = "MESSAGE")]
     print: Option<Option<String>>,
     /// The request JSON [default: stdin, unless -p gives the message]
-    #[arg(long)]
+    #[arg(long, value_parser = path)]
     request: Option<PathBuf>,
     /// stream-json: JSON lines; text: the reply alone [default: text with -p, else stream-json]
     #[arg(long, value_enum)]
@@ -71,7 +71,7 @@ struct Ask {
     #[arg(long, conflicts_with = "system_file")]
     system: Option<String>,
     /// A file holding the agent's instructions
-    #[arg(long)]
+    #[arg(long, value_parser = path)]
     system_file: Option<PathBuf>,
     #[command(flatten)]
     providers: ProvidersArg,
@@ -83,7 +83,7 @@ struct Ask {
 #[derive(Args)]
 struct ProvidersArg {
     /// A providers file in msg's models.json shape [default: <home>/providers.json]
-    #[arg(long = "providers")]
+    #[arg(long = "providers", value_parser = path)]
     path: Option<PathBuf>,
 }
 
@@ -92,7 +92,7 @@ enum Command {
     /// Run pending compaction and summaries
     Jobs {
         /// A request whose providers the summaries use
-        #[arg(long)]
+        #[arg(long, value_parser = path)]
         request: Option<PathBuf>,
         #[command(flatten)]
         providers: ProvidersArg,
@@ -109,12 +109,19 @@ enum Command {
     },
 }
 
-fn home(given: Option<PathBuf>) -> Result<PathBuf> {
-    if let Some(home) = given.or_else(|| std::env::var_os("DM_HOME").map(PathBuf::from)) {
-        return Ok(home);
+/// A path argument, with `~` expanded even when the shell did not.
+fn path(raw: &str) -> Result<PathBuf, std::convert::Infallible> {
+    Ok(home::expand(Path::new(raw)))
+}
+
+fn dm_home(given: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(dir) =
+        given.or_else(|| std::env::var_os("DM_HOME").map(|dir| home::expand(dir.as_ref())))
+    {
+        return Ok(dir);
     }
-    let user = std::env::var_os("HOME").ok_or_else(|| anyhow!("set --home, DM_HOME or HOME"))?;
-    Ok(PathBuf::from(user).join(".dm"))
+    let user = home::user().ok_or_else(|| anyhow!("set --home, DM_HOME or HOME"))?;
+    Ok(user.join(".dm"))
 }
 
 fn read_request(path: &Path) -> Result<Request> {
@@ -197,8 +204,7 @@ impl Ask {
     }
 }
 
-async fn run(cli: Cli) -> Result<()> {
-    let home = home(cli.home)?;
+async fn run(cli: Cli, home: PathBuf) -> Result<()> {
     let http = reqwest::Client::new();
     match cli.command {
         None => {
@@ -239,7 +245,16 @@ async fn run(cli: Cli) -> Result<()> {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    let home = match dm_home(cli.home.take()) {
+        Ok(home) => home,
+        Err(err) => {
+            eprintln!("dm: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // Key commands can name files in dm's home as `$DM_HOME`, however the home was given.
+    std::env::set_var("DM_HOME", &home);
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -250,7 +265,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(run(cli)) {
+    match runtime.block_on(run(cli, home)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("dm: {err:#}");

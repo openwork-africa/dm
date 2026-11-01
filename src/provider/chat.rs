@@ -1,5 +1,6 @@
 //! A conversation as every API style sees it, and what a model's streamed answer is built into.
 
+use super::think::ThinkFilter;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -57,6 +58,13 @@ pub struct Chat {
     pub system: String,
     pub messages: Vec<Message>,
     pub tools: Vec<ToolSpec>,
+}
+
+impl Chat {
+    /// The system text, unless there is none to send.
+    pub fn system(&self) -> Option<&str> {
+        Some(self.system.as_str()).filter(|s| !s.trim().is_empty())
+    }
 }
 
 /// Tokens, with input that came from or went into the cache counted apart from the rest.
@@ -126,21 +134,24 @@ pub struct Turn {
     pub usage: Usage,
 }
 
-/// Gathers events into a turn, in the order the calls were started.
+fn stream(text: &str, on_text: &mut dyn FnMut(&str)) {
+    if !text.is_empty() {
+        on_text(text);
+    }
+}
+
+/// Gathers events into a turn, in the order the calls were started, with reasoning kept out of the text.
 #[derive(Default)]
 pub struct TurnBuilder {
     turn: Turn,
     slots: BTreeMap<usize, usize>,
+    think: ThinkFilter,
 }
 
 impl TurnBuilder {
     pub fn apply(&mut self, event: Event, on_text: &mut dyn FnMut(&str)) {
         match event {
-            Event::Text(text) if !text.is_empty() => {
-                on_text(&text);
-                self.turn.reply.text.push_str(&text);
-            }
-            Event::Text(_) => {}
+            Event::Text(text) => stream(&self.think.push(&text), on_text),
             Event::ToolCall {
                 slot,
                 id,
@@ -164,7 +175,10 @@ impl TurnBuilder {
         }
     }
 
-    pub fn finish(mut self) -> Turn {
+    pub fn finish(mut self, on_text: &mut dyn FnMut(&str)) -> Turn {
+        let (rest, reply) = self.think.finish();
+        stream(&rest, on_text);
+        self.turn.reply.text = reply;
         // A call a host left without an id still needs one to be answered.
         for (n, call) in self.turn.reply.calls.iter_mut().enumerate() {
             if call.id.is_empty() {

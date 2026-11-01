@@ -42,11 +42,13 @@ impl Api for OpenAiResponses {
     fn body(&self, model: &ModelEntry, chat: &Chat) -> Value {
         let mut body = json!({
             "model": model.id,
-            "instructions": chat.system,
             "input": input(chat),
             "stream": true,
             "store": false,
         });
+        if let Some(system) = chat.system() {
+            body["instructions"] = json!(system);
+        }
         if !chat.tools.is_empty() {
             body["tools"] = chat
                 .tools
