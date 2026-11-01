@@ -26,18 +26,27 @@ pub struct Answered {
     pub cost_usd: f64,
 }
 
-pub async fn respond(
-    store: &Store,
-    http: &reqwest::Client,
-    request: &Request,
-    out: &mut dyn Sink,
-) -> Result<Answered> {
-    let message = request
-        .message
-        .as_deref()
-        .map(str::trim)
-        .filter(|m| !m.is_empty())
-        .ok_or_else(|| anyhow!("there is no message to answer"))?;
+/// Counts each call in the store and adds up what the answer used and cost.
+struct Ledger<'a> {
+    store: &'a Store,
+    today: &'a str,
+    who: &'a Who,
+    total: Usage,
+    cost: f64,
+}
+
+impl Ledger<'_> {
+    fn count(&mut self, purpose: &str, model: &Model, usage: Usage) -> Result<()> {
+        self.total.add(usage);
+        self.cost += self
+            .store
+            .count_call(self.today, self.who, purpose, model, &usage)?;
+        Ok(())
+    }
+}
+
+/// The model that answers, and the one that decides on a lookup when the request asks for one.
+fn models(request: &Request, http: &reqwest::Client) -> Result<(Model, Option<Model>)> {
     let model = Model::new(
         http.clone(),
         request.providers.target(request.model.as_deref())?,
@@ -51,8 +60,27 @@ pub async fn respond(
         )),
         None => None,
     };
+    Ok((model, decider))
+}
+
+pub async fn respond(
+    store: &Store,
+    http: &reqwest::Client,
+    request: &Request,
+    out: &mut dyn Sink,
+) -> Result<Answered> {
+    let message = request
+        .message
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .ok_or_else(|| anyhow!("there is no message to answer"))?;
+    let (model, decider) = models(request, http)?;
     let who = Who::new(request.agent(), request.person.as_deref())?;
-    let zone = day::zone(&request.time_zone.clone().unwrap_or_else(day::system_zone))?;
+    let zone = request
+        .time_zone
+        .as_deref()
+        .map_or_else(|| day::zone(&day::system_zone()), day::zone)?;
     let day::Moment {
         day: today,
         display: now,
@@ -68,21 +96,19 @@ pub async fn respond(
         .rev()
         .find(|m| m.role == ASSISTANT)
         .map(|m| m.content.clone());
-    store.load_memory(&who)?;
 
-    let mut total = Usage::default();
-    let mut cost = 0.0;
-    let mut count = |purpose: &str, model: &Model, usage: Usage| -> Result<()> {
-        total.add(usage);
-        cost += store.count_call(&today, &who, purpose, model, &usage)?;
-        Ok(())
+    let mut ledger = Ledger {
+        store,
+        today: &today,
+        who: &who,
+        total: Usage::default(),
+        cost: 0.0,
     };
-
     let look_up = match &decider {
         Some(decider) => {
             let decision = lookup::decide(decider, message, last_reply.as_deref(), &now).await;
             if let Some(usage) = decision.usage {
-                count("lookup", decider, usage)?;
+                ledger.count("lookup", decider, usage)?;
             }
             Some(decision.needed)
         }
@@ -98,8 +124,8 @@ pub async fn respond(
         look_up: look_up == Some(true),
     }
     .render();
-    let messages = messages_of(history);
     let tools = if offered {
+        store.load_memory(&who)?;
         vec![Tool {
             spec: remember::tool(),
             run: Box::new(|args| {
@@ -116,7 +142,7 @@ pub async fn respond(
         &model,
         Chat {
             system,
-            messages,
+            messages: messages_of(history),
             tools: vec![],
         },
         &tools,
@@ -124,7 +150,7 @@ pub async fn respond(
     )
     .await?;
     for usage in &answer.rounds {
-        count("chat", &model, *usage)?;
+        ledger.count("chat", &model, *usage)?;
     }
     if !answer.reply.trim().is_empty() {
         store.add_message(&who, &today, ASSISTANT, &answer.reply)?;
@@ -133,8 +159,8 @@ pub async fn respond(
     let answered = Answered {
         reply: answer.reply,
         model: model.label(),
-        usage: total,
-        cost_usd: cost,
+        usage: ledger.total,
+        cost_usd: ledger.cost,
     };
     out.line(&Line::Done {
         reply: &answered.reply,
