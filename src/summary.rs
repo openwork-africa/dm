@@ -95,6 +95,8 @@ pub async fn update(store: &Store, model: &Model, who: &Who, day: &str) -> Resul
     if let Some(dir) = file.parent() {
         fs::create_dir_all(dir)?;
     }
-    fs::write(&file, &markdown)?;
+    let part = file.with_extension("md.part");
+    fs::write(&part, &markdown)?;
+    fs::rename(&part, &file)?;
     store.index_known(who, &markdown)
 }

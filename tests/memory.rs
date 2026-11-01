@@ -353,3 +353,55 @@ fn a_failed_compaction_leaves_no_orphan_transcript() {
     );
     assert_eq!(store.history(&who(), day).unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn notes_are_written_through_a_part_file_and_renamed() {
+    let mock = serve(vec![notes_call(), notes_call()]);
+    let home = tempfile::tempdir().unwrap();
+    let store = Store::open(home.path()).unwrap();
+    let transcripts = home.path().join("transcripts/default/thandi");
+    fs::create_dir_all(&transcripts).unwrap();
+    fs::write(
+        transcripts.join("2026-10-31-1.md"),
+        "# 2026-10-31\n\nPerson: I love jazz\n",
+    )
+    .unwrap();
+    let notes = home.path().join("notes/default");
+    fs::create_dir_all(&notes).unwrap();
+    fs::write(notes.join("thandi.md"), "- old notes\n").unwrap();
+    let summary = Job::Summary {
+        agent: "default".into(),
+        person: "thandi".into(),
+        day: "2026-10-31".into(),
+        model: "mock/m1".into(),
+    };
+    let request = common::request("openai-completions", &mock.url, "unused");
+    let http = reqwest::Client::new();
+
+    // With the part file's place taken, the write fails and the notes file is as it was.
+    fs::create_dir(notes.join("thandi.md.part")).unwrap();
+    store.enqueue(&summary).unwrap();
+    let ran = run_due(&store, Some(&request.providers), &http)
+        .await
+        .unwrap();
+    assert_eq!(ran.failed, 1);
+    assert_eq!(
+        fs::read_to_string(notes.join("thandi.md")).unwrap(),
+        "- old notes\n"
+    );
+
+    fs::remove_dir(notes.join("thandi.md.part")).unwrap();
+    store.enqueue(&summary).unwrap();
+    store
+        .conn
+        .execute("UPDATE jobs SET run_after = 0", [])
+        .unwrap();
+    let ran = run_due(&store, Some(&request.providers), &http)
+        .await
+        .unwrap();
+    assert_eq!(ran.done, 1);
+    assert!(fs::read_to_string(notes.join("thandi.md"))
+        .unwrap()
+        .contains("jazz"));
+    assert!(!notes.join("thandi.md.part").exists());
+}
