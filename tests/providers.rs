@@ -137,8 +137,8 @@ async fn anthropic_messages() {
     assert_eq!(sent[0].header("x-api-key"), Some("fake-literal-key"));
     assert_eq!(sent[0].header("anthropic-version"), Some("2023-06-01"));
     assert_eq!(
-        sent[0].body["tools"][0]["input_schema"]["required"],
-        json!(["query"])
+        sent[0].body["tools"][0]["input_schema"]["properties"]["url"]["type"],
+        json!("array")
     );
     let messages = sent[1].body["messages"].as_array().unwrap();
     let assistant = &messages[messages.len() - 2]["content"];

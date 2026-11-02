@@ -1,6 +1,6 @@
 [package]
 name = "dm"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.80"
 description = "Answers a direct message straight away, keeps transcripts, summarises them, gives the model a tool to recall them, and offers it the tools (skills) it is given."
@@ -28,6 +28,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "macros", "process", "time", "io-util"] }
+url = "2"
 
 [dev-dependencies]
 tempfile = "3"

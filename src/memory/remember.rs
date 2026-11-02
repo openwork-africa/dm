@@ -5,6 +5,8 @@
 //! The index lives in this process only (a temporary table), loaded from the files for the person being answered when
 //! dm starts, so it always matches them; each transcript and notes file written while dm runs is added as it is
 //! written.
+//!
+//! With `url`, it reads those links instead (links.rs): the content the agent is given access to, as signed links.
 
 use crate::{
     memory::transcript::{day_of, entries},
@@ -34,7 +36,10 @@ const DESCRIPTION: &str = concat!(
     "It searches their notes (their name, the people in their life, their work, what they love and dislike, what is going on, ",
     "what they asked you to remember) and everything said before that is no longer in this conversation, earlier today and every day before. ",
     "For query, give a few key words, not a sentence: names, places and topics, and the kind of thing you want (music, job, birthday, sister). ",
-    "It returns the closest matches with where they come from, or \"Nothing found.\""
+    "It returns the closest matches with where they come from, or \"Nothing found.\" ",
+    "To read content you were given access to (the links under \"Content you have access to\" in your instructions), put its link in url, ",
+    "whole and copied exactly, or several links as a list, with the query: it reads them and returns the passages that best match the query, ",
+    "each with its link. Without a query it returns the first passages. Links last 30 minutes."
 );
 
 pub fn tool() -> ToolSpec {
@@ -43,21 +48,19 @@ pub fn tool() -> ToolSpec {
         description: DESCRIPTION.to_string(),
         parameters: json!({
             "type": "object",
-            "properties": { "query": { "type": "string", "description": "A few key words: names, places or topics." } },
-            "required": ["query"],
+            "properties": {
+                "query": { "type": "string", "description": "A few key words: names, places or topics." },
+                "url": {
+                    "description": "Links from \"Content you have access to\", each copied whole: reads that content instead of what you know.",
+                    "type": "array",
+                    "items": { "type": "string" },
+                },
+            },
         }),
     }
 }
 
-/// Each word quoted, so nothing in it is read as an operator; any of them may match.
-fn fts_query(query: &str) -> Option<String> {
-    let words: Vec<String> = query
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(|w| format!("\"{w}\""))
-        .collect();
-    (!words.is_empty()).then(|| words.join(" OR "))
-}
+use crate::memory::links::fts_query;
 
 impl Store {
     /// Loads the index from every transcript and the notes file of this agent and person.

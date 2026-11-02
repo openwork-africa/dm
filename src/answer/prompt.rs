@@ -4,7 +4,7 @@
 use crate::store::notes::{lines_of, Layer, Notes};
 
 const BASE: &str = include_str!("../prompts/prompt.md");
-const REMEMBER: &str = "It searches what you know about this person and what the two of you said before that is no longer in this conversation. Use it when the message refers to something about them or something said before, rather than guessing.";
+const REMEMBER: &str = "It searches what you know about this person and what the two of you said before that is no longer in this conversation. Use it when the message refers to something about them or something said before, rather than guessing. It also reads the content you were given access to: put a link from \"Content you have access to\" in url, with a query.";
 const LOOK_UP: &str = "Before you answer this message, call remember to look up what you know about them and what was said before. Write the query yourself: a few key words for what you need, including the kind of thing (music, job, birthday, sister).";
 
 pub struct Prompt<'a> {

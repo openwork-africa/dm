@@ -6,8 +6,9 @@ messages into transcripts, summarises them once a day into notes about the perso
 (run under Deno, held to the hosts and environment they declare) or HTTP endpoints. It is a Rust library and a single
 static binary, and it talks to Anthropic, OpenAI (chat completions and Responses), Amazon Bedrock and Azure AI Foundry.
 
-dm itself does no web search and reads no links; `remember` searches only what dm itself has kept. A skill such as
-[`web_search`](https://github.com/openwork-africa/skills) is how a model reaches the web.
+dm itself does no web search. `remember` searches what dm itself has kept, and since 0.3.0 it also reads links it is
+handed (`url`): the content an agent was given access to, as short-lived signed links (see **Links** below). A skill such
+as [`web_search`](https://github.com/openwork-africa/skills) is how a model reaches the web.
 
 ## Install
 
@@ -256,6 +257,14 @@ reply's text is printed, as it streams. Errors go to stderr as `dm: ...`, with e
   remember) is written to `notes/<agent>/<person>.md` and reachable only through `remember`.
 - **remember.** SQLite full-text search (FTS5) over the person's transcripts and their "what you know" notes. The index
   is built from the files when dm starts, so it always matches them.
+- **Links.** `remember` with `url` (one link or a list, at most 10) reads each link instead: HTTPS only, or plain HTTP
+  on this machine (localhost, 127.0.0.1, ::1); redirects are held to the same rule (at most 5). Each link may take 20
+  seconds and weigh 5 MiB. Only text is read (`text/*`, markdown, JSON, XML; HTML as its words); PDFs and other
+  binary files are refused with a line that says so, as no pure-Rust PDF reader small enough was added. What is read
+  is cut into passages of about 600 characters along paragraph and sentence breaks, indexed in a throwaway in-memory
+  FTS5 table for that one call, ranked by BM25 against `query`, and the 6 best come back, each as
+  `<title> (<link without its query>):`. With no `query`, the first 6 passages come back in order. A link that cannot
+  be read is named, without its signature, with why.
 - **Usage.** Every call's tokens and cost are counted in `dm.db` by day, agent, person, purpose (`chat`, `lookup`,
   `summary`) and model.
 - **Jobs.** Compaction and summaries are SQLite jobs. dm prints the answer first, then runs any job that is due before

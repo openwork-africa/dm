@@ -1,7 +1,12 @@
 //! dm's own tools, run in this process: `remember`, its one builtin.
 
 use super::{Call, Setup, Tool};
-use crate::{memory::remember, provider::chat::ToolSpec, store::Store, who::Who};
+use crate::{
+    memory::{links, remember},
+    provider::chat::ToolSpec,
+    store::Store,
+    who::Who,
+};
 use anyhow::{bail, Result};
 use serde_json::Value;
 
@@ -33,6 +38,13 @@ impl Tool for Remember<'_> {
 
     fn call<'a>(&'a self, input: &'a Value) -> Call<'a> {
         let query = input["query"].as_str().unwrap_or_default();
-        Box::pin(async move { self.store.recall(self.who, query) })
+        let urls = links::links_in(&input["url"]);
+        Box::pin(async move {
+            if urls.is_empty() {
+                self.store.recall(self.who, query)
+            } else {
+                links::recall(&urls, query, links::Limits::default()).await
+            }
+        })
     }
 }
