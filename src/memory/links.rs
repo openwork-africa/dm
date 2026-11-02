@@ -482,7 +482,7 @@ mod tests {
         let found = focus("saffron recipe", std::slice::from_ref(&page)).unwrap();
         let best = found.split("\n\nNotes (").next().unwrap();
         assert!(best.starts_with("Notes (https://x/content/1):\n") && best.contains("saffron"));
-        let many = focus("llamas", &[page.clone()]).unwrap();
+        let many = focus("llamas", std::slice::from_ref(&page)).unwrap();
         assert_eq!(many.matches("(https://x/content/1):").count(), HITS);
         let first = focus("", &[page]).unwrap();
         assert!(first.starts_with("Notes (https://x/content/1):\nParagraph 0"));
