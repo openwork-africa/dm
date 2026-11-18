@@ -190,11 +190,11 @@ pub async fn respond(
     Ok(answered)
 }
 
-/// The history as the model is sent it. A failed or empty answer leaves two user rows in a row, and some hosts reject
-/// roles that do not alternate, so rows of one role are joined.
 /// How many of the newest messages of the day go to the model.
 const MODEL_HISTORY: usize = 4;
 
+/// The history as the model is sent it. A failed or empty answer leaves two user rows in a row, and some hosts reject
+/// roles that do not alternate, so rows of one role are joined.
 fn messages_of(history: Vec<StoredMessage>) -> Vec<Message> {
     let mut messages: Vec<Message> = vec![];
     for m in history {
