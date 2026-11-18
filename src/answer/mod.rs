@@ -146,7 +146,9 @@ pub async fn respond(
         system: request.system.as_deref(),
         remember: offer_remember,
         others: tools.len() > usize::from(offer_remember),
-        look_up: look_up == Some(true),
+        web: tools.iter().any(|t| t.spec().name == "web_search"),
+        look_up: look_up == Some(true) && offer_remember,
+        compacted: store.has_compacted(&who)? || store.has_earlier_day(&who, &today)?,
     }
     .render();
 

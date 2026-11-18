@@ -217,7 +217,7 @@ async fn lookup_yes_offers_remember_and_asks_for_it() {
     assert!(answer["messages"][0]["content"]
         .as_str()
         .unwrap()
-        .contains("Before you answer this message, call remember"));
+        .contains("Before you answer this message, look back through what you know"));
     assert_eq!(done["usage"]["input"], 6, "the decision's tokens count too");
 }
 
@@ -225,10 +225,8 @@ async fn lookup_yes_offers_remember_and_asks_for_it() {
 async fn lookup_no_offers_no_tool() {
     let (answer, _) = with_lookup("no").await;
     assert!(answer.get("tools").is_none());
-    assert!(!answer["messages"][0]["content"]
-        .as_str()
-        .unwrap()
-        .contains("remember"));
+    let system = answer["messages"][0]["content"].as_str().unwrap();
+    assert!(!system.contains("remember") && !system.contains("what the two of you said before"));
 }
 
 #[tokio::test]
