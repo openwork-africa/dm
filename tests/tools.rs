@@ -86,7 +86,9 @@ async fn a_js_skill_describes_itself_and_runs_with_its_env() {
     assert!(sent[0].body["messages"][0]["content"]
         .as_str()
         .unwrap()
-        .contains("One of your tools is remember."));
+        .contains("You can look back through what you\'ve kept"));
+    let system = sent[0].body["messages"][0]["content"].as_str().unwrap();
+    assert!(!system.contains("remember") && !system.contains("tool"));
     let result: Value = serde_json::from_str(&result_of(&lines)).unwrap();
     assert_eq!(result, json!({ "said": "hi", "greetingLength": 19 }));
     assert_eq!(lines.last().unwrap()["reply"], "Done.");
@@ -301,7 +303,7 @@ async fn without_remember_listed_there_is_no_lookup() {
     assert_eq!(sent.len(), 1, "no lookup decision was asked for");
     assert!(sent[0].body.get("tools").is_none());
     let system = sent[0].body["messages"][0]["content"].as_str().unwrap();
-    assert!(!system.contains("tool, remember") && !system.contains("call remember"));
+    assert!(!system.contains("remember") && !system.contains("look back through what you"));
 }
 
 /// What the binary is sent and prints answering in `home` with `args` and `env`, the model replying with `replies`.

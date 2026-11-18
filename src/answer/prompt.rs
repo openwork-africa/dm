@@ -1,13 +1,13 @@
 //! The system prompt: the base prompt with their date and time and "how to be with them", then the agent's own
-//! instructions, then what `remember` is for when it is offered, and last the lookup's instruction when it said yes.
+//! instructions, then what looking back is for when it is offered, and last the lookup's instruction when it said yes.
 
 use crate::store::notes::{lines_of, Layer, Notes};
 
 const BASE: &str = include_str!("../prompts/prompt.md");
-const REMEMBER: &str = "It searches what you know about this person and what the two of you said before that is no longer in this conversation. Use it when the message refers to something about them or something said before, rather than guessing. It also reads the content you were given access to: put a link from \"Content you have access to\" in url, with a query.";
+const REMEMBER: &str = "You can look back through what you've kept about this person and what the two of you said before that is no longer in this conversation. Do it when the message refers to something about them or something said before, rather than guessing. You can also read the content you were given access to: give it a link from \"Content you have access to\" along with what you want to find.";
 /// The one question of a first meeting. Left out once any of their messages has been compacted: by then it has had its chance.
 const ASK_NAME: &str = "If you don't have a name yet, early on, in your first reply, say hi warmly, tell them you don't have a name yet, and ask what they'd like to call you. Ask just that one question, once. If they skip it, drop it and don't push.";
-const LOOK_UP: &str = "Before you answer this message, call remember to look up what you know about them and what was said before. Write the query yourself: a few key words for what you need, including the kind of thing (music, job, birthday, sister).";
+const LOOK_UP: &str = "Before you answer this message, look back through what you know about them and what was said before. Write the search yourself: a few key words for what you need, including the kind of thing (music, job, birthday, sister).";
 
 pub struct Prompt<'a> {
     pub notes: &'a Notes,
@@ -41,10 +41,8 @@ impl Prompt<'_> {
             parts.push(ASK_NAME.to_string());
         }
         match (self.remember, self.others) {
-            (true, false) => parts.push(format!(
-                "You have one tool, remember. {REMEMBER} You have no access to the web."
-            )),
-            (true, true) => parts.push(format!("One of your tools is remember. {REMEMBER}")),
+            (true, false) => parts.push(format!("{REMEMBER} You have no access to the web.")),
+            (true, true) => parts.push(REMEMBER.to_string()),
             _ => {}
         }
         if self.look_up {
@@ -73,8 +71,8 @@ mod tests {
 
     #[test]
     fn the_prompt_sounds_like_a_friend_and_names_nothing_internal() {
-        for compacted in [false, true] {
-            let text = render(false, compacted).to_lowercase();
+        for (remember, compacted) in [(false, false), (false, true), (true, false), (true, true)] {
+            let text = render(remember, compacted).to_lowercase();
             for word in [
                 "tool",
                 "remember",
