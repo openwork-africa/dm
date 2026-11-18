@@ -61,11 +61,12 @@ impl Store {
         )?)
     }
 
-    /// Whether they have said anything on a day before `day`: their last day is closed (and compacted) as they come back.
+    /// Whether they were answered on a day before `day`: that day is closed (and compacted) as they come back. A day whose
+    /// message failed to get an answer does not count.
     pub fn has_earlier_day(&self, who: &Who, day: &str) -> Result<bool> {
         Ok(self.conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM messages WHERE agent = ?1 AND person = ?2 AND day < ?3)",
-            params![who.agent, who.person, day],
+            "SELECT EXISTS(SELECT 1 FROM messages WHERE agent = ?1 AND person = ?2 AND day < ?3 AND role = ?4)",
+            params![who.agent, who.person, day, ASSISTANT],
             |r| r.get(0),
         )?)
     }

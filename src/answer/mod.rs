@@ -147,7 +147,7 @@ pub async fn respond(
         remember: offer_remember,
         others: tools.len() > usize::from(offer_remember),
         web: tools.iter().any(|t| t.spec().name == "web_search"),
-        look_up: look_up == Some(true),
+        look_up: look_up == Some(true) && offer_remember,
         compacted: store.has_compacted(&who)? || store.has_earlier_day(&who, &today)?,
     }
     .render();
