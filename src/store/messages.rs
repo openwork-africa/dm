@@ -61,6 +61,15 @@ impl Store {
         )?)
     }
 
+    /// Whether they have said anything on a day before `day`: their last day is closed (and compacted) as they come back.
+    pub fn has_earlier_day(&self, who: &Who, day: &str) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM messages WHERE agent = ?1 AND person = ?2 AND day < ?3)",
+            params![who.agent, who.person, day],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn history(&self, who: &Who, day: &str) -> Result<Vec<StoredMessage>> {
         self.messages(who, day, false)
     }
@@ -107,5 +116,24 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(last)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_earlier_day_is_found_and_today_alone_is_not() {
+        let home = tempfile::tempdir().unwrap();
+        let store = Store::open(home.path()).unwrap();
+        let who = Who::new("dm", Some("sam")).unwrap();
+        store.add_message(&who, "2026-11-17", "user", "hi").unwrap();
+        store
+            .add_message(&who, "2026-11-18", "user", "hello")
+            .unwrap();
+        assert!(store.has_earlier_day(&who, "2026-11-18").unwrap());
+        assert!(!store.has_earlier_day(&who, "2026-11-17").unwrap());
+        assert!(!store.has_compacted(&who).unwrap());
     }
 }
