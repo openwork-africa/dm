@@ -46,3 +46,40 @@ impl Prompt<'_> {
         parts.join("\n\n")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_prompt_sounds_like_a_friend_and_says_nothing_technical() {
+        let text = Prompt {
+            notes: &Notes::default(),
+            now: "Monday",
+            system: None,
+            remember: false,
+            others: false,
+            look_up: false,
+        }
+        .render()
+        .to_lowercase();
+        for word in [
+            "markdown",
+            "commonmark",
+            "transcript",
+            "compaction",
+            "incomplete",
+            "fragmented",
+            "intent",
+            "rephrase",
+            "clarify",
+            "isn't clear",
+            "appears to be",
+        ] {
+            assert!(!text.contains(word), "{word} is in the prompt");
+        }
+        assert!(text.contains("you don't have a name yet"));
+        assert!(text.contains("never both in one message"));
+        assert!(text.contains("not sure i caught that"));
+    }
+}
