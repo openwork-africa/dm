@@ -52,6 +52,15 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Whether any of this person's messages, on any day, has been compacted.
+    pub fn has_compacted(&self, who: &Who) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM messages WHERE agent = ?1 AND person = ?2 AND compacted = 1)",
+            params![who.agent, who.person],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn history(&self, who: &Who, day: &str) -> Result<Vec<StoredMessage>> {
         self.messages(who, day, false)
     }

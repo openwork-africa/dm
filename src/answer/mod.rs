@@ -147,6 +147,7 @@ pub async fn respond(
         remember: offer_remember,
         others: tools.len() > usize::from(offer_remember),
         look_up: look_up == Some(true),
+        compacted: store.has_compacted(&who)?,
     }
     .render();
 
