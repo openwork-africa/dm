@@ -102,7 +102,12 @@ pub async fn respond(
         store.close_day(&who, &yesterday, &model.label())?;
     }
     store.add_message(&who, &today, USER, message)?;
-    let history = store.history(&who, &today)?;
+    // The model sees the newest four messages, grouped by speaker (see `messages_of`). Older ones are compacted.
+    let history = {
+        let mut all = store.history(&who, &today)?;
+        let start = all.len().saturating_sub(MODEL_HISTORY);
+        all.split_off(start)
+    };
     let last_reply = history
         .iter()
         .rev()
@@ -187,6 +192,9 @@ pub async fn respond(
 
 /// The history as the model is sent it. A failed or empty answer leaves two user rows in a row, and some hosts reject
 /// roles that do not alternate, so rows of one role are joined.
+/// How many of the newest messages of the day go to the model.
+const MODEL_HISTORY: usize = 4;
+
 fn messages_of(history: Vec<StoredMessage>) -> Vec<Message> {
     let mut messages: Vec<Message> = vec![];
     for m in history {
