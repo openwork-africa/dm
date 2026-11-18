@@ -5,9 +5,11 @@ use crate::store::notes::{lines_of, Layer, Notes};
 
 const BASE: &str = include_str!("../prompts/prompt.md");
 const REMEMBER: &str = "You can look back through what you've kept about this person and what the two of you said before that is no longer in this conversation. Do it when the message refers to something about them or something said before, rather than guessing. You can also read content you were given access to.";
+/// Only when looking back is offered: a name they gave in an earlier chat is found there, not asked for again.
+const LOOK_FOR_NAME: &str = "If you don't have a name yet, before you say so, look back through what you've kept from earlier chats for a name they gave you.";
 const WEB: &str = "You can look things up online and read a page you were given. Do it when the message needs current facts or a page you were given. Never name any service or provider behind it, and never invent sources. If a lookup fails, say plainly that you could not look that up right now, offer to answer from what you know, and say it may be out of date.";
-/// The one question of a first meeting. Left out once any of their messages has been compacted: by then it has had its chance.
-const ASK_NAME: &str = "If you don't have a name yet, early on, in your first reply, say hi warmly, tell them you don't have a name yet, and ask what they'd like to call you. Ask just that one question, once. If they skip it, drop it and don't push.";
+/// The get-to-know-you questions of a first meeting. Left out once any of their messages has been compacted: by then they have had their chance.
+const GET_TO_KNOW: &str = "Early on, while you don't know their name from this chat, get to know them. Say hi warmly in your first reply. Ask one detail at a time: each reply asks exactly one question, only the single next one and nothing more, even if several are still open. Never two questions in one reply, including questions joined with \"and\", \"also\" or \"by the way\", and never a list of questions. Go in this order: first their name and what they'd like to be called, then one or two simple things about their life, like what they do or what they like. If you already know their name, start with the life questions. Never make up a fact about them. Once they answer, use it and move on. Ask each question at most once in this chat: if the answer isn't in the chat, don't ask it again. If they ignore or skip a question, drop it and don't push.";
 const LOOK_UP: &str = "Before you answer this message, look back through what you know about them and what was said before. Think about the kind of thing you need (music, job, birthday, sister) and look for it.";
 
 pub struct Prompt<'a> {
@@ -41,11 +43,13 @@ impl Prompt<'_> {
             parts.push(format!("Your instructions:\n{system}"));
         }
         if !self.compacted {
-            parts.push(ASK_NAME.to_string());
+            parts.push(GET_TO_KNOW.to_string());
         }
         match (self.remember, self.others) {
-            (true, false) => parts.push(format!("{REMEMBER} You have no access to the web.")),
-            (true, true) => parts.push(REMEMBER.to_string()),
+            (true, false) => parts.push(format!(
+                "{REMEMBER} {LOOK_FOR_NAME} You have no access to the web."
+            )),
+            (true, true) => parts.push(format!("{REMEMBER} {LOOK_FOR_NAME}")),
             _ => {}
         }
         if self.web {
@@ -119,10 +123,16 @@ mod tests {
         let fresh = render(false, false, false);
         assert!(fresh.contains("you don't have a name yet"));
         assert!(fresh.contains("never call yourself \"Assistant\""));
-        assert!(fresh.contains("what they'd like to call you"));
+        assert!(fresh.contains("Ask one detail at a time: each reply asks exactly one question"));
+        assert!(fresh.contains("never a list of questions"));
+        assert!(fresh.contains("at most once in this chat"));
+        assert!(fresh.contains("If they ignore or skip a question, drop it and don't push"));
+        assert!(fresh.contains("get to know them"));
+        assert!(!fresh.contains("what they'd like to call you"));
+        assert!(!fresh.contains("tell them you don't have a name yet"));
         let later = render(false, false, true);
         assert!(later.contains("you don't have a name yet"));
-        assert!(!later.contains("what they'd like to call you"));
+        assert!(!later.contains("get to know them"));
     }
 
     #[test]
@@ -141,5 +151,25 @@ mod tests {
         assert!(render(false, false, false).contains(
             "Short replies like ok, thanks, yes, lol or a single word that makes sense are fine: just answer naturally."
         ));
+    }
+
+    #[test]
+    fn it_looks_back_for_a_given_name_only_when_looking_back_is_offered() {
+        assert!(render(true, false, false).contains("for a name they gave you"));
+        assert!(render(true, true, true).contains("for a name they gave you"));
+        assert!(!render(false, false, false).contains("for a name they gave you"));
+    }
+
+    #[test]
+    fn the_one_question_rule_is_part_of_how_it_talks_on_every_reply() {
+        for (remember, web, compacted) in [
+            (false, false, false),
+            (false, false, true),
+            (true, true, true),
+        ] {
+            assert!(
+                render(remember, web, compacted).contains("ask exactly one question in that reply")
+            );
+        }
     }
 }
