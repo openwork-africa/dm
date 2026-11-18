@@ -226,7 +226,7 @@ async fn lookup_no_offers_no_tool() {
     let (answer, _) = with_lookup("no").await;
     assert!(answer.get("tools").is_none());
     let system = answer["messages"][0]["content"].as_str().unwrap();
-    assert!(!system.contains("remember") && !system.contains("look back through what you"));
+    assert!(!system.contains("remember") && !system.contains("what the two of you said before"));
 }
 
 #[tokio::test]

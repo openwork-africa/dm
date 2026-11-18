@@ -303,7 +303,7 @@ async fn without_remember_listed_there_is_no_lookup() {
     assert_eq!(sent.len(), 1, "no lookup decision was asked for");
     assert!(sent[0].body.get("tools").is_none());
     let system = sent[0].body["messages"][0]["content"].as_str().unwrap();
-    assert!(!system.contains("remember") && !system.contains("look back through what you"));
+    assert!(!system.contains("remember") && !system.contains("what the two of you said before"));
 }
 
 /// What the binary is sent and prints answering in `home` with `args` and `env`, the model replying with `replies`.
