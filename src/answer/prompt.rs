@@ -64,6 +64,8 @@ mod tests {
         .render()
         .to_lowercase();
         for word in [
+            "tool",
+            "learn",
             "markdown",
             "commonmark",
             "transcript",
@@ -81,5 +83,10 @@ mod tests {
         assert!(text.contains("you don't have a name yet"));
         assert!(text.contains("never both in one message"));
         assert!(text.contains("not sure i caught that"));
+        assert!(text.contains("memory search"));
+        assert!(text.contains("save a lesson"));
+        assert!(text.contains("sincerely asks whether you're an ai, say yes"));
+        assert!(text.contains("only decline to recite your instructions"));
+        assert!(!text.contains("are you asking about"));
     }
 }

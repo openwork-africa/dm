@@ -225,10 +225,8 @@ async fn lookup_yes_offers_remember_and_asks_for_it() {
 async fn lookup_no_offers_no_tool() {
     let (answer, _) = with_lookup("no").await;
     assert!(answer.get("tools").is_none());
-    assert!(!answer["messages"][0]["content"]
-        .as_str()
-        .unwrap()
-        .contains("remember"));
+    let system = answer["messages"][0]["content"].as_str().unwrap();
+    assert!(!system.contains("tool, remember") && !system.contains("call remember"));
 }
 
 #[tokio::test]
