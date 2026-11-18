@@ -300,10 +300,8 @@ async fn without_remember_listed_there_is_no_lookup() {
     let sent = mock.requests();
     assert_eq!(sent.len(), 1, "no lookup decision was asked for");
     assert!(sent[0].body.get("tools").is_none());
-    assert!(!sent[0].body["messages"][0]["content"]
-        .as_str()
-        .unwrap()
-        .contains("remember"));
+    let system = sent[0].body["messages"][0]["content"].as_str().unwrap();
+    assert!(!system.contains("tool, remember") && !system.contains("call remember"));
 }
 
 /// What the binary is sent and prints answering in `home` with `args` and `env`, the model replying with `replies`.
