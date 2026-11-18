@@ -54,7 +54,7 @@ impl Prompt<'_> {
             (true, true) => parts.push(format!("{REMEMBER} {LOOK_FOR_NAME}")),
             _ => {}
         }
-        if self.remember || self.others {
+        if self.remember {
             parts.push(KEEP_IN_MIND.to_string());
         }
         if self.web {
@@ -188,6 +188,7 @@ mod tests {
         assert!(bare.contains("How to be with them:"));
         assert!(!bare.contains("keep it in mind for later chats"));
         assert!(render(true, false, false).contains("keep it in mind for later chats"));
+        assert!(!render(false, true, false).contains("keep it in mind for later chats"));
     }
 
     #[test]

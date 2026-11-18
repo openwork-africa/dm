@@ -133,6 +133,13 @@ mod tests {
         store
             .add_message(&who, "2026-11-18", "user", "hello")
             .unwrap();
+        assert!(
+            !store.has_earlier_day(&who, "2026-11-18").unwrap(),
+            "an earlier message nobody answered does not count"
+        );
+        store
+            .add_message(&who, "2026-11-17", ASSISTANT, "hey")
+            .unwrap();
         assert!(store.has_earlier_day(&who, "2026-11-18").unwrap());
         assert!(!store.has_earlier_day(&who, "2026-11-17").unwrap());
         assert!(!store.has_compacted(&who).unwrap());
